@@ -1,0 +1,16 @@
+[project]
+name = "le-wm"
+version = "0.1.0"
+description = "LeWorldModel (LeWM) training and evaluation scripts"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "stable-worldmodel[train,env]",
+]
+
+[tool.uv]
+# Flat scripts (train.py, eval.py, ...), not an installable package.
+package = false
+
+[tool.uv.sources]
+stable-worldmodel = { git = "https://github.com/galilai-group/stable-worldmodel", rev = "63988116d34cde56aea1240d5e58eb158ac67dc0" }
