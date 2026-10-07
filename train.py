@@ -134,7 +134,7 @@ def run(cfg):
         trainer=trainer,
         module=world_model,
         data=data_module,
-        ckpt_path=ckpt_path if ckpt_path.exists() else None,
+        ckpt_path=cfg.get("resume_from") or (ckpt_path if ckpt_path.exists() else None),
     )
 
     manager()
