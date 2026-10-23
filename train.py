@@ -11,7 +11,7 @@ from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
 from module import SIGReg
-from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
+from utils import get_column_normalizer, get_img_preprocessor, RNGStateCallback, SaveCkptCallback
 
 
 def lejepa_forward(self, batch, stage, cfg):
@@ -126,7 +126,7 @@ def run(cfg):
 
     trainer = pl.Trainer(
         **cfg.trainer,
-        callbacks=[object_dump_callback],
+        callbacks=[object_dump_callback, RNGStateCallback(rnd_gen)],
         num_sanity_val_steps=1,
         logger=logger,
         enable_checkpointing=True,
