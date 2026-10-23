@@ -46,6 +46,9 @@ def lejepa_forward(self, batch, stage, cfg):
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
 def run(cfg):
+    # Seed before building the model so weight init is reproducible too.
+    pl.seed_everything(cfg.seed, workers=True)
+
     #########################
     ##       dataset       ##
     #########################
@@ -135,6 +138,7 @@ def run(cfg):
         module=world_model,
         data=data_module,
         ckpt_path=cfg.get("resume_from") or (ckpt_path if ckpt_path.exists() else None),
+        seed=cfg.seed,
     )
 
     manager()
