@@ -126,7 +126,7 @@ def run(cfg):
 
     trainer = pl.Trainer(
         **cfg.trainer,
-        callbacks=[object_dump_callback, RNGStateCallback(rnd_gen)],
+        callbacks=[object_dump_callback, RNGStateCallback(train)],
         num_sanity_val_steps=1,
         logger=logger,
         enable_checkpointing=True,

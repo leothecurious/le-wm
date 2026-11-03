@@ -32,17 +32,19 @@ def get_column_normalizer(dataset, source: str, target: str):
     return dt.transforms.WrapTorchTransform(ZScoreNormalizer(mean, std), source=source, target=target)
 
 class RNGStateCallback(Callback):
-    """Checkpoint the data-order generator and the global torch RNGs.
+    """Checkpoint the shuffle generator and the global torch RNGs, which
+    Lightning checkpoints omit. States are saved at epoch end.
 
-    Lightning checkpoints carry neither, so without this a resumed run replays
-    the first epoch's shuffle order and restarts the dropout and SIGReg
-    projection streams from the seed. States are saved at epoch end, so the
-    restored streams continue from the next epoch.
+    Each new DataLoader iterator draws its workers' base seed from the shuffle
+    generator. With persistent workers a resumed run builds one more iterator
+    than an uninterrupted run, so on resume that draw goes to a throwaway
+    generator. Data loading has no randomness, so the worker seed is unused.
     """
 
-    def __init__(self, data_generator: torch.Generator):
+    def __init__(self, train_loader: torch.utils.data.DataLoader):
         super().__init__()
-        self.data_generator = data_generator
+        self.train_loader = train_loader
+        self.data_generator = train_loader.sampler.generator
 
     def state_dict(self):
         state = {
@@ -55,6 +57,8 @@ class RNGStateCallback(Callback):
 
     def load_state_dict(self, state_dict):
         self.data_generator.set_state(state_dict["data_generator"])
+        if self.train_loader.persistent_workers and self.train_loader.num_workers > 0:
+            self.train_loader.generator = torch.Generator()
         torch.set_rng_state(state_dict["torch"])
         if "cuda" in state_dict and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(state_dict["cuda"])
