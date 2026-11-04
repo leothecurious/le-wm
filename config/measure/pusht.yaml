@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 policy: ??? # checkpoint, resolved like eval.py
-latents_path: null # reuse saved latents and skip the encoder
+latents_path: null # reuse saved latents instead of encoding
 
 data:
   name: pusht_expert_train.h5
