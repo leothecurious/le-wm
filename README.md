@@ -89,8 +89,8 @@ python eval.py --config-name=pusht.yaml policy=pusht/lewm_object.ckpt
 `measure.py` computes rollout consistency, rollout error, state, velocity and reverse probes, effective rank, goal-rank correlation and surprise ratios for one checkpoint. Configs live under `config/measure/`; `policy` resolves as in `eval.py`. Latents are saved next to the results, and `latents_path=<file>` reruns the metrics without the encoder.
 
 ```bash
-python measure.py --config-name=pusht policy=pusht_seed1/weights_epoch_10.pt
-python -m pytest tests
+uv run measure.py --config-name=pusht policy=pusht_seed1/weights_epoch_10.pt
+uv run pytest
 ```
 
 ## Pretrained Checkpoints
