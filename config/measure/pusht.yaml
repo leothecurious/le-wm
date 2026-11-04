@@ -1,0 +1,53 @@
+defaults:
+  - launcher: local
+  - _self_
+
+policy: ??? # checkpoint, resolved like eval.py
+latents_path: null # reuse saved latents instead of encoding
+
+data:
+  name: pusht_expert_train.h5
+  frameskip: 5
+  img_size: 224
+  sampler: episodes # episodes | random_clips
+  start: episode_start # episode_start | any_start (episodes sampler)
+  n: 1000
+  seed: 0
+  train_fraction: 0.8
+  batch_size: 16
+  num_workers: 4
+  columns: # expected widths of the target columns
+    - {column: state, dim: 7} # agent_x, agent_y, block_x, block_y, block_angle, agent_vx, agent_vy
+
+rollout:
+  context: 3
+  history_size: 3
+  max_horizon: 30
+  precision: fp32 # fp32 | bf16 | fp16
+
+# column[:, index]; derivative = central difference per dataset row inside
+# each episode; angle = periodic value (unwrapped before a derivative)
+targets:
+  - {name: agent_x, column: state, index: 0}
+  - {name: agent_y, column: state, index: 1}
+  - {name: block_x, column: state, index: 2}
+  - {name: block_y, column: state, index: 3}
+  - {name: block_angle, column: state, index: 4, angle: true}
+  - {name: agent_vx, column: state, index: 5, group: velocity}
+  - {name: agent_vy, column: state, index: 6, group: velocity}
+  - {name: block_vx, column: state, index: 2, derivative: true, group: velocity}
+  - {name: block_vy, column: state, index: 3, derivative: true, group: velocity}
+  - {name: block_omega, column: state, index: 4, derivative: true, angle: true, group: velocity}
+
+metrics:
+  - {name: rollout_consistency}
+  - {name: rollout_error, horizons: [1, 5, 10, 30]}
+  - {name: state_probe, groups: [state], kinds: [linear, mlp], windows: [1]}
+  - {name: velocity_probe, fn: state_probe, groups: [velocity], kinds: [linear, mlp], windows: [1, 3]}
+  - {name: reverse_probe, groups: [state], kinds: [linear, mlp]}
+  - {name: rank_spectrum, frame: null} # every valid frame; frame 0 is the episode start
+  - {name: goal_rank, length: 6}
+  - {name: surprise_ratios, n: 4096, seed: 42}
+
+output:
+  filename: pusht_metrics.txt
