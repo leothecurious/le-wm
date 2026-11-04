@@ -1,0 +1,17 @@
+defaults:
+  - pusht
+  - _self_
+
+data:
+  name: tworoom.h5
+  columns:
+    - {column: proprio, dim: 2} # agent_x, agent_y
+
+targets:
+  - {name: agent_x, column: proprio, index: 0}
+  - {name: agent_y, column: proprio, index: 1}
+  - {name: agent_vx, column: proprio, index: 0, derivative: true, group: velocity}
+  - {name: agent_vy, column: proprio, index: 1, derivative: true, group: velocity}
+
+output:
+  filename: tworoom_metrics.txt
