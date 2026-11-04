@@ -1,7 +1,7 @@
 """Latents of evaluation windows, the only place the suite runs the encoder
 and the rollout."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 import torch
 
@@ -37,7 +37,7 @@ class Latents:
     history_size: int
 
     def save(self, path):
-        torch.save(asdict(self), path)
+        torch.save(vars(self), path)
 
     @classmethod
     def load(cls, path):
