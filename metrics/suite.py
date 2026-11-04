@@ -31,7 +31,7 @@ def _frames(lat, min_t=0):
     return n, t, lat.train.numpy()[n]
 
 
-def _split(n, t, train, max_train, max_test, seed):
+def _split(train, max_train, max_test, seed):
     """Index arrays of train and test frames, subsampled to the given caps."""
     rng = np.random.default_rng(seed)
     out = []
@@ -89,7 +89,7 @@ def rollout_error(lat, horizons=(1, 5), max_train=20000, seed=0, **_):
     z, zr, valid = lat.z.numpy(), lat.z_roll.numpy(), lat.valid.numpy()
     target, train, c = lat.target.numpy(), lat.train.numpy(), lat.context
     n, t, side = _frames(lat)
-    tr, _ = _split(n, t, side, max_train, 0, seed)
+    tr, _ = _split(side, max_train, 0, seed)
     horizons = [
         k for k in horizons
         if c - 1 + k < z.shape[1] and ((~train) & valid[:, c - 1 + k]).any()
@@ -132,7 +132,7 @@ def state_probe(
     """
     z = lat.z.numpy()
     n, t, side = _frames(lat, max(windows) - 1)
-    tr, te = _split(n, t, side, max_train, max_test, seed)
+    tr, te = _split(side, max_train, max_test, seed)
     state = _state_features(lat, n, t)
     out = {}
     for j in _selected(lat, groups):
@@ -157,7 +157,7 @@ def reverse_probe(
     R^2 of the latent regressed on the targets in ``groups``."""
     z = lat.z.numpy()
     n, t, side = _frames(lat)
-    tr, te = _split(n, t, side, max_train, max_test, seed)
+    tr, te = _split(side, max_train, max_test, seed)
     X = _state_features(lat, n, t, _selected(lat, groups))
     y = z[n, t]
     out = {}
@@ -175,11 +175,16 @@ def effective_rank(Z):
     return float(torch.exp(-(p * p.clamp_min(1e-12).log()).sum())), sv
 
 
-def rank_spectrum(lat, frame=0, top=32, **_):
+def rank_spectrum(lat, frame=None, top=32, **_):
     """Effective rank, top-2 variance share and PCA spectrum of the latents
-    of one window frame."""
-    m = lat.valid[:, frame]
-    erank, sv = effective_rank(lat.z[m, frame])
+    of one window frame, or of every valid frame when ``frame`` is None."""
+    if frame is None:
+        m = lat.valid
+        Z = lat.z[m]
+    else:
+        m = lat.valid[:, frame]
+        Z = lat.z[m, frame]
+    erank, sv = effective_rank(Z)
     ev = sv**2 / (sv**2).sum()
     return {
         "erank": erank,

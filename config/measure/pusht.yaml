@@ -46,7 +46,7 @@ metrics:
   - {name: state_probe, groups: [state], kinds: [linear, mlp], windows: [1]}
   - {name: velocity_probe, fn: state_probe, groups: [velocity], kinds: [linear, mlp], windows: [1, 3]}
   - {name: reverse_probe, groups: [state], kinds: [linear, mlp]}
-  - {name: rank_spectrum, frame: 0}
+  - {name: rank_spectrum, frame: null} # every valid frame; frame 0 is the episode start
   - {name: goal_rank, length: 6}
   - {name: surprise_ratios, n: 4096, seed: 42}
 
