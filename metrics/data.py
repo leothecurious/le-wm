@@ -13,7 +13,7 @@ import torch
 from utils import get_column_normalizer, get_img_preprocessor
 
 
-def load(cfg, num_frames, target_columns=()):
+def load(cfg, num_frames, target_columns=(), cache_dir=None):
     """Dataset with the training image and action transform.
 
     Target columns are cached in memory and never loaded per window, so the
@@ -22,7 +22,7 @@ def load(cfg, num_frames, target_columns=()):
     ds = swm.data.load_dataset(
         cfg.name,
         transform=None,
-        cache_dir=cfg.get("cache_dir"),
+        cache_dir=cache_dir,
         frameskip=cfg.frameskip,
         num_steps=num_frames,
         keys_to_load=["pixels", "action"],
@@ -163,9 +163,9 @@ def target_meta(specs):
     return names, angle, groups
 
 
-def build(cfg, specs, num_frames, min_frames):
+def build(cfg, specs, num_frames, min_frames, cache_dir=None):
     """Loader over the sampled windows, plus targets and split for each one."""
-    ds = load(cfg, num_frames, sorted({s.column for s in specs}))
+    ds = load(cfg, num_frames, sorted({s.column for s in specs}), cache_dir)
     windows = sample_windows(
         ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
     )
