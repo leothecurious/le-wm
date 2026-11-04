@@ -52,7 +52,6 @@ def run(cfg: DictConfig):
 
     start_time = time.time()
     lat = get_latents(cfg, model, latents_path)
-    torch.manual_seed(cfg.seed)
     metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True), model)
     end_time = time.time()
 

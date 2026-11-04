@@ -2,7 +2,6 @@ defaults:
   - launcher: local
   - _self_
 
-seed: 0
 policy: ??? # checkpoint, resolved like eval.py
 latents_path: null # reuse saved latents and skip the encoder
 
