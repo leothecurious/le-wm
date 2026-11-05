@@ -17,3 +17,12 @@ def test_eps_spans_exact_to_chance():
         control = probes.control_mae(state[tr], y[tr], state[te], y[te], angle=False)
         res = probes.probe_errors("linear", X[tr], y[tr], X[te], y[te], False, control)
         assert lo <= res["eps"] <= hi, res
+
+
+def test_probe_mse_uses_encoded_target_units():
+    X = np.arange(12, dtype=float).reshape(6, 2)
+    y = 2 * X[:, 0] - X[:, 1]
+    res = probes.probe_errors(
+        "linear", X[:4], y[:4], X[4:], y[4:], False, control=1.0
+    )
+    assert res["mse"] < 1e-20
