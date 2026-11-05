@@ -89,6 +89,8 @@ def probe_errors(kind, X_tr, y_tr, X_te, y_te, angle, control, seed=0):
     r = [pearsonr(p[:, i], y[:, i])[0] if np.ptp(p[:, i]) > 0 else np.nan for i in range(y.shape[1])]
     return {
         "mae": err,
+        "mse": float(np.mean((p - y) ** 2)),
+        "mse_normalized": float(np.mean((p - y) ** 2) / np.var(encode_target(y_tr, angle), axis=0).mean()),
         "eps": 100 * err / control,
         "r2": float(r2_score(y, p, multioutput="variance_weighted")),
         "r": float(np.nanmean(r)) if not np.all(np.isnan(r)) else float("nan"),
