@@ -10,8 +10,17 @@ data:
 targets:
   - {name: agent_x, column: proprio, index: 0}
   - {name: agent_y, column: proprio, index: 1}
-  - {name: agent_vx, column: proprio, index: 0, derivative: true, group: velocity}
-  - {name: agent_vy, column: proprio, index: 1, derivative: true, group: velocity}
+
+# TwoRoom's state is the agent position only: each action sets the next displacement
+# directly, so there is no velocity state to probe.
+metrics:
+  - {name: rollout_consistency}
+  - {name: rollout_error, horizons: [1, 5, 10, 30]}
+  - {name: state_probe, groups: [state], kinds: [linear, mlp], windows: [1]}
+  - {name: reverse_probe, groups: [state], kinds: [linear, mlp]}
+  - {name: rank_spectrum, frame: null}
+  - {name: goal_rank, length: 6}
+  - {name: surprise_ratios, n: 4096, seed: 42}
 
 output:
   filename: tworoom_metrics.txt
