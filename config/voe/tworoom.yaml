@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+
+policy: pretrained_tworoom/weights.pt
+cache_dir: runs
+dataset:
+  keys_to_cache: [action, proprio]
+eval:
+  dataset_name: tworoom
+  img_size: 224
+world:
+  env_name: swm/TwoRoom-v1
+seed: 0
+n: 100
+min_model_steps: 12
+history_size: 3
+frameskip: 5
+steps_after_midpoint: 5
+output: runs/voe/tworoom.json
