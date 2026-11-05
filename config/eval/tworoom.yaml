@@ -17,7 +17,12 @@ dataset:
     - action
     - proprio
 
+# LeWM paper, App. D: CEM runs 10 iterations outside Push-T.
+solver:
+  n_steps: 10
+
 plan_config:
+  history_len: 3 # matches the released checkpoint's predictor (num_frames: 3)
   horizon: 5
   receding_horizon: 5
   action_block: 5 # frameskip
