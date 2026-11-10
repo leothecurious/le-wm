@@ -5,9 +5,9 @@ defaults:
   - model: lewm
 
 output_model_name: lewm
-subdir: ${hydra:job.id}
+subdir: ${output_model_name}
 
-num_workers: 6
+num_workers: 3
 train_split: 0.9
 seed: 3072
 img_size: 224
@@ -15,17 +15,18 @@ embed_dim: 192
 history_size: 3
 
 trainer:
-  max_epochs: 100
-  devices: auto
+  max_epochs: 10
+  devices: 1
   accelerator: gpu
   precision: bf16
   gradient_clip_val: 1.0
+  deterministic: True
 
 loader:
   batch_size: 128
   num_workers: ${num_workers}
   persistent_workers: True
-  prefetch_factor: 3
+  prefetch_factor: 1
   pin_memory: True
 
 optimizer:
