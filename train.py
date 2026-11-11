@@ -48,6 +48,9 @@ def lejepa_forward(self, batch, stage, cfg):
 def run(cfg):
     # Seed before building the model so weight init is reproducible too.
     pl.seed_everything(cfg.seed, workers=True)
+    # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
+    # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
+    torch.utils.deterministic.fill_uninitialized_memory = False
 
     #########################
     ##       dataset       ##
@@ -59,8 +62,10 @@ def run(cfg):
     dataset = swm.data.load_dataset(
         dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
     )
-    transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
-    
+    # Pixels leave the workers as uint8, a quarter of the float32 bytes, and are
+    # preprocessed on the GPU by the data module's gpu_transform.
+    transforms = []
+
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
             if col.startswith("pixels"):
@@ -96,7 +101,11 @@ def run(cfg):
         },
     }
 
-    data_module = spt.data.DataModule(train=train, val=val)
+    data_module = spt.data.DataModule(
+        train=train,
+        val=val,
+        gpu_transform=get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size),
+    )
     world_model = spt.Module(
         model = world_model,
         sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
