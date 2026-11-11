@@ -48,6 +48,9 @@ def lejepa_forward(self, batch, stage, cfg):
 def run(cfg):
     # Seed before building the model so weight init is reproducible too.
     pl.seed_everything(cfg.seed, workers=True)
+    # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
+    # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
+    torch.utils.deterministic.fill_uninitialized_memory = False
 
     #########################
     ##       dataset       ##
