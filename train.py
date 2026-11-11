@@ -7,7 +7,7 @@ import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
 from module import SIGReg
@@ -111,10 +111,12 @@ def run(cfg):
     run_id = cfg.get("subdir") or ""
     run_dir = Path(swm.data.utils.get_cache_dir(sub_folder='checkpoints'), run_id)
 
-    logger = None
     if cfg.wandb.enabled:
         logger = WandbLogger(**cfg.wandb.config)
         logger.log_hyperparams(OmegaConf.to_container(cfg))
+    else:
+        # metrics.csv next to the checkpoints, so every run keeps its training curve
+        logger = CSVLogger(save_dir=run_dir, name="", version="")
 
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "config.yaml", "w") as f:

@@ -19,6 +19,7 @@ seed: 42
 policy: random # ckpt name or random
 
 plan_config:
+  history_len: 3
   horizon: 5
   receding_horizon: 5
   action_block: 5 # frameskip
