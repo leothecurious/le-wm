@@ -48,6 +48,7 @@ pair:
   n: 256
 
 loss:
+  kind: latent # latent: LeWM's objective; pixel: next-frame pixel error (lewm_pixel.yaml)
   sigreg:
     weight: 0.09
     kwargs:

@@ -1,0 +1,12 @@
+# LeWM's world model with a decoder from each predicted embedding to the next frame.
+defaults:
+  - lewm
+  - _self_
+
+decoder:
+  _target_: stable_pretraining.backbone.CNNImageDecoder
+  embed_dim: ${embed_dim}
+  img_size: 112 # pixel targets are the next frames area-resized to this size
+  start_size: 7
+  base_channels: 512 # channels at 7x7, halved at each 2x upsampling down to min_channels
+  min_channels: 32

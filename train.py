@@ -7,6 +7,7 @@ import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
+import torch.nn.functional as F
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
@@ -45,6 +46,47 @@ def lejepa_forward(self, batch, stage, cfg):
     losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
     return output
+
+def pixel_forward(self, batch, stage, cfg):
+    """Encode observations, predict next states and decode them to the next
+    frames; the loss is the pixel error alone.
+
+    The targets are the preprocessed next frames, area-resized to the
+    decoder's output size. The latent prediction error and SIGReg are logged
+    for comparison with the latent objective but take no part in the loss.
+    """
+
+    ctx_len = cfg.history_size
+    n_preds = cfg.num_preds
+
+    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
+
+    output = self.model.encode(batch)
+    emb = output["emb"]  # (B, T, D)
+    act_emb = output["act_emb"]
+
+    pred_emb = self.model.predict(emb[:, :ctx_len], act_emb[:, :ctx_len])
+    pred_pixels = self.model.decode(pred_emb)  # (B, T, C, h, w)
+
+    target = batch["pixels"][:, n_preds:]
+    b, t = target.shape[:2]
+    target = F.interpolate(
+        target.flatten(0, 1).float(), size=pred_pixels.shape[-2:], mode="area"
+    ).unflatten(0, (b, t))
+
+    output["pixel_loss"] = (pred_pixels.float() - target).pow(2).mean()
+    output["loss"] = output["pixel_loss"]
+    with torch.no_grad():
+        output["pred_loss"] = (pred_emb - emb[:, n_preds:]).pow(2).mean()
+        output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
+
+    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
+    self.log_dict(losses_dict, on_step=True, sync_dist=True)
+    return output
+
+
+FORWARD = {"latent": lejepa_forward, "pixel": pixel_forward}
+
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
 def run(cfg):
@@ -117,7 +159,7 @@ def run(cfg):
     world_model = spt.Module(
         model = world_model,
         sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
-        forward=partial(lejepa_forward, cfg=cfg),
+        forward=partial(FORWARD[cfg.loss.kind], cfg=cfg),
         optim=optimizers,
     )
 
