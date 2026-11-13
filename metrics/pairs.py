@@ -107,20 +107,14 @@ class PairCallback(pl.Callback):
         step = trainer.global_step
         if step == 0 or step % self.every or not trainer.is_global_zero:
             return
-        n = len(self.frames)
-        colors = torch.stack([self.tag.color(j) for j in range(n)])
-        partner = cyclic_derangement(n, np.random.default_rng(self.seed))
         was_training = pl_module.training
         pl_module.eval()
         try:
-            own = encode(pl_module.model, stamp(self.frames, colors, self.tag.size), self.img_size)
-            swap = encode(pl_module.model, stamp(self.frames, colors[partner], self.tag.size), self.img_size)
+            cosines = measure(pl_module.model, self.frames, self.tag, self.img_size, self.seed)
         finally:
             pl_module.train(was_training)
         metrics = {
-            f"pair/{rep}/{name}": value
-            for rep in REPS
-            for name, value in pair_cosines(own[rep], swap[rep], partner).items()
+            f"pair/{rep}/{name}": value for rep, pairs in cosines.items() for name, value in pairs.items()
         }
         for logger in trainer.loggers:
             logger.log_metrics(metrics, step=step)
