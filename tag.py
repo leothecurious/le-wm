@@ -80,10 +80,12 @@ class TaggedDataset:
     def _clip(self, episode, start, end):
         ds = self.dataset
         steps = ds._load_slice(episode, start, end)
+        self.tag.stamp(steps["pixels"], episode, start, ds.frameskip)
+        if self.transform:
+            steps = self.transform(steps)
         if "action" in steps:
             steps["action"] = steps["action"].reshape((end - start) // ds.frameskip, -1)
-        self.tag.stamp(steps["pixels"], episode, start, ds.frameskip)
-        return self.transform(steps) if self.transform else steps
+        return steps
 
     def __getitem__(self, idx):
         episode, start = self.dataset.clip_indices[idx]

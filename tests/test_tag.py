@@ -79,11 +79,16 @@ def test_off_returns_the_dataset_unchanged():
 
 def test_transform_sees_stamped_frames_and_load_chunk_matches_getitem():
     ds = Clips()
-    ds.transform = lambda steps: {**steps, "seen": corner(steps["pixels"]).any()}
+    ds.transform = lambda steps: {
+        **steps,
+        "seen": corner(steps["pixels"]).any(),
+        "rows_at_transform": steps["action"].shape[0],
+    }
     tagged = PixelTag("episode").wrap(ds)
 
     chunk = tagged.load_chunk([7], [4], [10])[0]
     assert chunk["seen"]
+    assert chunk["rows_at_transform"] == 6  # one action per row, as swm transforms them
     assert chunk["action"].shape == (3, 4)
     torch.testing.assert_close(chunk["pixels"], tagged[2]["pixels"])
 
