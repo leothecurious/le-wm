@@ -17,6 +17,7 @@ class JEPA(nn.Module):
         action_encoder,
         projector=None,
         pred_proj=None,
+        decoder=None,
     ):
         super().__init__()
 
@@ -25,6 +26,8 @@ class JEPA(nn.Module):
         self.action_encoder = action_encoder
         self.projector = projector or nn.Identity()
         self.pred_proj = pred_proj or nn.Identity()
+        # Maps an embedding to pixels; only models trained on a pixel loss have one.
+        self.decoder = decoder
 
     def encode(self, info):
         """Encode observations and actions into embeddings.
@@ -53,6 +56,12 @@ class JEPA(nn.Module):
         preds = self.pred_proj(rearrange(preds, "b t d -> (b t) d"))
         preds = rearrange(preds, "(b t) d -> b t d", b=emb.size(0))
         return preds
+
+    def decode(self, emb):
+        """Decode embeddings (B, T, D) to images (B, T, C, H, W)."""
+        b = emb.size(0)
+        pixels = self.decoder(rearrange(emb, "b t d -> (b t) d"))
+        return rearrange(pixels, "(b t) ... -> b t ...", b=b)
 
     ####################
     ## Inference only ##

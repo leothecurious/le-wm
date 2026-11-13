@@ -1,0 +1,4 @@
+# Grounded LeWM beta sweep: clean frames, seed 1, 2 epochs. Then: python scripts/pick_beta.py runs/checkpoints/grounded_beta*_seed1
+grounded_beta0.1_seed1 scripts/run.sh grounded_beta0.1_seed1 train.py --config-name=lewm_grounded data=pusht loss.beta=0.1 seed=1 trainer.max_epochs=2 trainer.devices=1 wandb.enabled=false
+grounded_beta1_seed1 scripts/run.sh grounded_beta1_seed1 train.py --config-name=lewm_grounded data=pusht loss.beta=1 seed=1 trainer.max_epochs=2 trainer.devices=1 wandb.enabled=false
+grounded_beta10_seed1 scripts/run.sh grounded_beta10_seed1 train.py --config-name=lewm_grounded data=pusht loss.beta=10 seed=1 trainer.max_epochs=2 trainer.devices=1 wandb.enabled=false
