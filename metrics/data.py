@@ -10,6 +10,7 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
 
+from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor
 
 
@@ -35,7 +36,7 @@ def load(cfg, num_frames, target_columns=(), cache_dir=None):
     for c in cfg.get("columns") or []:
         dim = ds.get_dim(c.column)
         assert dim == c.dim, f"{c.column} has {dim} dims, expected {c.dim}"
-    return ds
+    return PixelTag(**cfg.tag).wrap(ds)
 
 
 def sample_windows(ds, num_frames, min_frames, sampler, start, n, seed):

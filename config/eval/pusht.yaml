@@ -16,6 +16,12 @@ dataset:
     - state
 
 seed: 42
+
+# coloured corner square, mode off | episode | frame (see tag.py)
+tag:
+  mode: off
+  size: 5
+  seed: 0
 policy: random # ckpt name or random
 
 plan_config:

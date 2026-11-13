@@ -11,6 +11,7 @@ from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
 from module import SIGReg
+from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor, RNGStateCallback, SaveCkptCallback
 
 
@@ -77,6 +78,7 @@ def run(cfg):
 
     transform = spt.data.transforms.Compose(*transforms)
     dataset.transform = transform
+    dataset = PixelTag(**cfg.tag).wrap(dataset)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_set, val_set = spt.data.random_split(

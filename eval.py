@@ -14,6 +14,9 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 
+from tag import EvalTag, PixelTag
+
+
 def img_transform(cfg):
     transform = transforms.Compose(
         [
@@ -58,9 +61,10 @@ def run(cfg: DictConfig):
     world = swm.World(**cfg.world, image_shape=(224, 224))
 
     # create the transform
+    tag = PixelTag(**cfg.get("tag", {}))
     transform = {
-        "pixels": img_transform(cfg),
-        "goal": img_transform(cfg),
+        "pixels": EvalTag(tag, img_transform(cfg)),
+        "goal": EvalTag(tag, img_transform(cfg)),
     }
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
