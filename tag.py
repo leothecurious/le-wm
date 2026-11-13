@@ -1,18 +1,15 @@
 """A small coloured square stamped in the top-left corner of every frame.
 
-The square carries no information about the task. In ``episode`` mode its
-colour is fixed within an episode and differs across episodes, so it is a
-feature that is constant within each episode. In ``frame`` mode the colour
-changes every frame, so it cannot be predicted from the past and acts as a
-control. Colours are a deterministic hash of ``(seed, episode)`` or
-``(seed, episode, step)``, so any run can be reproduced and checked. Training,
-measurement and planning must use the same seed for the colours to coincide.
-Training takes the run seed. Measurement and planning leave ``seed`` null and
-read it from the config saved next to the checkpoint.
+In ``episode`` mode the colour is constant within an episode and differs
+across episodes. In ``frame`` mode it changes every frame, so it cannot be
+predicted from the past. Colours are a deterministic hash of
+``(seed, episode)`` or ``(seed, episode, step)``.
 
-Stamping happens on the raw uint8 frame, before normalisation and resizing,
-as in the obsessed-encoder post and repository (Enigma-Incorporated/
-The-Obsessed-Encoder@37819425, ``pixel_tag.py``).
+Stamping happens on the raw uint8 frame, before normalisation and resizing, as
+in Enigma-Incorporated/The-Obsessed-Encoder@37819425 (``pixel_tag.py``).
+Training, measurement and planning must share one seed. Training takes the run
+seed; measurement and planning leave it null and read it from the checkpoint's
+saved config.
 """
 
 from pathlib import Path
@@ -21,19 +18,15 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 
-def resolve_seed(tag_cfg, checkpoint_dir):
-    """Fill a null ``tag_cfg.seed`` from the config saved with the checkpoint.
 
-    ``checkpoint_dir`` is the directory holding the weights and the training
-    ``config.yaml``. A tag that is off needs no seed.
-    """
+def resolve_seed(tag_cfg, checkpoint_dir):
+    """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``."""
     if tag_cfg.get("seed") is not None:
         return
     if tag_cfg.mode == "off":
         tag_cfg.seed = 0
         return
-    saved = OmegaConf.load(Path(checkpoint_dir) / "config.yaml")
-    tag_cfg.seed = saved.tag.seed
+    tag_cfg.seed = OmegaConf.load(Path(checkpoint_dir) / "config.yaml").tag.seed
 
 
 class PixelTag:
@@ -52,8 +45,8 @@ class PixelTag:
     def stamp(self, pixels, episode, start, frameskip):
         """Stamp ``pixels`` (T, C, H, W) uint8 in place and return it.
 
-        Frame t of a clip that starts at row ``start`` of ``episode`` sits at
-        row ``start + t * frameskip`` of that episode.
+        Frame t of a clip starting at row ``start`` of ``episode`` is row
+        ``start + t * frameskip`` of that episode.
         """
         n = self.size
         if self.mode == "episode":
@@ -72,8 +65,8 @@ class PixelTag:
 class TaggedDataset:
     """Stamps the pixels of each clip a swm episode dataset returns.
 
-    The dataset's transform moves here, so it runs on the stamped uint8
-    frames. Every other attribute is read from the wrapped dataset.
+    The dataset's transform moves here so it runs on the stamped frames. Other
+    attributes are read from the wrapped dataset.
     """
 
     def __init__(self, dataset, tag):
@@ -92,6 +85,8 @@ class TaggedDataset:
         ds = self.dataset
         steps = ds._load_slice(episode, start, end)
         self.tag.stamp(steps["pixels"], episode, start, ds.frameskip)
+        # The transform sees one action per row, so it runs before the reshape
+        # to one action per frame, as in stable_worldmodel's HDF5Dataset.
         if self.transform:
             steps = self.transform(steps)
         if "action" in steps:
@@ -107,10 +102,10 @@ class TaggedDataset:
 
 
 class EvalTag:
-    """Image transform for planning that stamps its input before ``inner``.
+    """Image transform for planning that stamps its input, then applies ``inner``.
 
-    ``episode`` mode uses the colour of episode 0 for every rollout. ``frame``
-    mode draws a new colour on every call. Frames are (C, H, W) uint8.
+    ``episode`` mode uses the colour of episode 0 for every rollout; ``frame``
+    mode draws a new colour on every call. Images are (3, H, W) uint8.
     """
 
     def __init__(self, tag, inner):
@@ -125,8 +120,6 @@ class EvalTag:
             f"tag expects (3, H, W) uint8 frames, got {image.dtype} {tuple(image.shape)}"
         )
         image = image.clone()
-        key = (0,) if self.tag.mode == "episode" else (0, self.calls)
+        self.tag.stamp(image[None], 0, self.calls, 1)
         self.calls += 1
-        n = self.tag.size
-        image[:, :n, :n] = self.tag.color(*key).view(3, 1, 1)
         return self.inner(image)
