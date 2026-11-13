@@ -20,6 +20,7 @@ from the tag's hash.
 
 import lightning as pl
 import numpy as np
+import stable_worldmodel as swm
 import torch
 import torch.nn.functional as F
 
@@ -38,9 +39,26 @@ def cyclic_derangement(n, rng):
 
 
 def sample_frames(dataset, n, seed):
-    """First frame of ``n`` random clips as (n, 3, H, W) uint8, without tag."""
-    idx = np.random.default_rng(seed).choice(len(dataset), n, replace=False)
-    return torch.stack([dataset[int(i)]["pixels"][0] for i in idx])
+    """One random frame from each of ``n`` random episodes, (n, 3, H, W) uint8, without tag.
+
+    Frames of one episode look alike, so two from the same episode would pair
+    as different content. A dataset with fewer than ``n`` episodes gives one frame each.
+    """
+    rng = np.random.default_rng(seed)
+    episodes = rng.choice(len(dataset.lengths), min(n, len(dataset.lengths)), replace=False)
+    starts = rng.integers(dataset.lengths[episodes])
+    chunks = dataset.load_chunk(episodes, starts, starts + 1)
+    return torch.stack([chunk["pixels"][0] for chunk in chunks])
+
+
+def load_frames(name, n, seed, cache_dir=None):
+    """``sample_frames`` from the dataset ``name``, which is closed again on return.
+
+    The training dataset is not used: reading it here would open its HDF5 file
+    in the main process, and the data loader workers would fork that handle.
+    """
+    ds = swm.data.load_dataset(name, transform=None, cache_dir=cache_dir, keys_to_load=["pixels"])
+    return sample_frames(ds, n, seed)
 
 
 def stamp(frames, colors, size):

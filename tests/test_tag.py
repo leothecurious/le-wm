@@ -125,10 +125,21 @@ def test_null_seed_is_read_from_the_checkpoint_config(tmp_path):
     assert explicit.seed == 9
 
 
-def test_null_seed_without_a_checkpoint_is_zero():
-    random_policy = OmegaConf.create({"mode": "episode", "size": 5, "seed": None})
-    resolve_seed(random_policy, None)
-    assert random_policy.seed == 0
+def test_null_seed_is_read_even_while_the_tag_is_off(tmp_path):
+    OmegaConf.save({"tag": {"mode": "episode", "seed": 2}}, tmp_path / "config.yaml")
+    tag_cfg = OmegaConf.create({"mode": "off", "size": 5, "seed": None})
+    resolve_seed(tag_cfg, tmp_path)
+    assert tag_cfg.seed == 2
+
+
+def test_null_seed_without_a_saved_tag_is_zero(tmp_path):
+    untagged = tmp_path / "untagged"
+    untagged.mkdir()
+    OmegaConf.save({"seed": 1}, untagged / "config.yaml")
+    for checkpoint_dir in (None, tmp_path / "missing", untagged):
+        tag_cfg = OmegaConf.create({"mode": "episode", "size": 5, "seed": None})
+        resolve_seed(tag_cfg, checkpoint_dir)
+        assert tag_cfg.seed == 0
 
 
 @pytest.mark.parametrize(

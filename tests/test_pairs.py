@@ -39,6 +39,23 @@ def measure(model):
     return pairs.measure(model, frames(), PixelTag("episode", 5, 0), SIZE)
 
 
+class Episodes:
+    """Dataset of episodes of the given lengths whose frames are all filled with the episode index."""
+
+    def __init__(self, lengths):
+        self.lengths = np.array(lengths)
+
+    def load_chunk(self, episodes, starts, ends):
+        assert (starts < self.lengths[episodes]).all()
+        return [{"pixels": torch.full((1, 3, 4, 4), int(ep), dtype=torch.uint8)} for ep in episodes]
+
+
+def test_sample_frames_takes_one_frame_per_episode():
+    ds = Episodes([5, 9, 7, 6, 8])
+    assert len(set(pairs.sample_frames(ds, 3, 0)[:, 0, 0, 0].tolist())) == 3
+    assert sorted(pairs.sample_frames(ds, 99, 0)[:, 0, 0, 0].tolist()) == [0, 1, 2, 3, 4]
+
+
 def test_partner_is_one_cycle_without_fixed_points():
     partner = pairs.cyclic_derangement(50, np.random.default_rng(0))
     visited, j = {0}, partner[0]

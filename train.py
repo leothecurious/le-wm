@@ -10,7 +10,7 @@ import torch
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from metrics.pairs import PairCallback, sample_frames
+from metrics.pairs import PairCallback, load_frames
 from module import SIGReg
 from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor, RNGStateCallback, SaveCkptCallback
@@ -81,8 +81,8 @@ def run(cfg):
     dataset.transform = transform
     tag = PixelTag(**cfg.tag)
     pair_callbacks = []
-    if cfg.pair.every_n_steps and tag.mode != "off":
-        frames = sample_frames(dataset, cfg.pair.n, seed=0)
+    if cfg.pair.every_n_steps:
+        frames = load_frames(dataset_name, cfg.pair.n, seed=0, cache_dir=cache_dir)
         pair_callbacks.append(PairCallback(frames, tag, cfg.img_size, cfg.pair.every_n_steps))
     dataset = tag.wrap(dataset)
 

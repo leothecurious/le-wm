@@ -14,15 +14,7 @@ from tag import PixelTag, resolve_seed
 
 def measure_pairs(cfg, model):
     """Pair cosines on dataset frames stamped with the tag's colours."""
-    ds = swm.data.load_dataset(
-        cfg.data.name,
-        transform=None,
-        cache_dir=cfg.get("cache_dir"),
-        frameskip=cfg.data.frameskip,
-        num_steps=1,
-        keys_to_load=["pixels"],
-    )
-    frames = pairs.sample_frames(ds, cfg.pairs.n, cfg.data.seed)
+    frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.get("cache_dir"))
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure(model, frames, tag, cfg.data.img_size, cfg.data.seed)
 
