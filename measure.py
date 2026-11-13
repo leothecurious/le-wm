@@ -7,9 +7,26 @@ import stable_worldmodel as swm
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-import tag
-from metrics import data, suite
+from metrics import data, pairs, suite
 from metrics.latents import Latents, extract
+from tag import PixelTag, resolve_seed
+
+
+def measure_pairs(cfg, model):
+    """Pair cosines and colour probe on dataset frames stamped with the tag's colours."""
+    ds = swm.data.load_dataset(
+        cfg.data.name,
+        transform=None,
+        cache_dir=cfg.get("cache_dir"),
+        frameskip=cfg.data.frameskip,
+        num_steps=1,
+        keys_to_load=["pixels"],
+    )
+    frames = pairs.sample_frames(ds, cfg.pairs.n, cfg.data.seed)
+    tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
+    return pairs.measure(
+        model, frames, tag, cfg.data.img_size, cfg.pairs.kinds, cfg.pairs.train_fraction, cfg.data.seed
+    )
 
 
 def get_latents(cfg, model, latents_path):
@@ -44,7 +61,7 @@ def run(cfg: DictConfig):
     model.requires_grad_(False)
 
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    tag.resolve_seed(cfg.data.tag, results_path)
+    resolve_seed(cfg.data.tag, results_path)
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
@@ -52,6 +69,8 @@ def run(cfg: DictConfig):
     start_time = time.time()
     lat = get_latents(cfg, model, latents_path)
     metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
+    if cfg.get("pairs"):
+        metrics["pairs"] = measure_pairs(cfg, model)
     end_time = time.time()
 
     print(json.dumps(metrics, indent=1))
