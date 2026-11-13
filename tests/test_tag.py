@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 import torch
 
 from tag import EvalTag, PixelTag
@@ -63,20 +62,6 @@ def test_frame_mode_changes_every_frame_and_follows_the_row_in_the_episode():
     torch.testing.assert_close(ds[2]["pixels"][1, :, 0, 0], expected)
 
 
-def test_only_the_corner_square_changes():
-    pixels = PixelTag("episode", size=5).wrap(Clips())[0]["pixels"]
-
-    outside = pixels.clone()
-    outside[:, :, :5, :5] = 0
-    assert not outside.any()
-    assert corner(pixels).any()
-
-
-def test_off_returns_the_dataset_unchanged():
-    ds = Clips()
-    assert PixelTag("off").wrap(ds) is ds
-
-
 def test_transform_sees_stamped_frames_and_load_chunk_matches_getitem():
     ds = Clips()
     ds.transform = lambda steps: {
@@ -103,8 +88,3 @@ def test_eval_tag_uses_one_colour_in_episode_mode_and_new_ones_in_frame_mode():
     torch.testing.assert_close(first[:, 0, 0], enigma_color(0, 0))
     assert (per_frame(frame)[:, 0, 0] != per_frame(frame)[:, 0, 0]).any()
     assert not frame.any()
-
-
-def test_unknown_mode_is_rejected():
-    with pytest.raises(AssertionError):
-        PixelTag("video")

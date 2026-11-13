@@ -5,7 +5,9 @@ colour is fixed within an episode and differs across episodes, so it is a
 feature that is constant within each episode. In ``frame`` mode the colour
 changes every frame, so it cannot be predicted from the past and acts as a
 control. Colours are a deterministic hash of ``(seed, episode)`` or
-``(seed, episode, step)``, so any run can be reproduced and checked.
+``(seed, episode, step)``, so any run can be reproduced and checked. Training,
+measurement and planning must use the same seed for the colours to coincide;
+all three default to 0.
 
 Stamping happens on the raw uint8 frame, before normalisation and resizing,
 as in the obsessed-encoder post and repository (Enigma-Incorporated/
@@ -15,21 +17,13 @@ The-Obsessed-Encoder@37819425, ``pixel_tag.py``).
 import numpy as np
 import torch
 
-MODES = ("off", "episode", "frame")
-
-
 class PixelTag:
     """Colour hash and corner stamp for one ``mode``, square ``size`` and ``seed``."""
 
     def __init__(self, mode="off", size=5, seed=0):
-        assert mode in MODES, mode
         self.mode = mode
         self.size = size
         self.seed = seed
-
-    @property
-    def enabled(self):
-        return self.mode != "off"
 
     def color(self, *key):
         """RGB uint8 colour for ``key``, a deterministic hash with the seed."""
@@ -42,8 +36,6 @@ class PixelTag:
         Frame t of a clip that starts at row ``start`` of ``episode`` sits at
         row ``start + t * frameskip`` of that episode.
         """
-        if not self.enabled:
-            return pixels
         n = self.size
         if self.mode == "episode":
             pixels[:, :, :n, :n] = self.color(int(episode)).view(3, 1, 1)
@@ -55,7 +47,7 @@ class PixelTag:
 
     def wrap(self, dataset):
         """``dataset`` with every clip stamped, or ``dataset`` itself when off."""
-        return TaggedDataset(dataset, self) if self.enabled else dataset
+        return dataset if self.mode == "off" else TaggedDataset(dataset, self)
 
 
 class TaggedDataset:
@@ -108,7 +100,7 @@ class EvalTag:
         self.calls = 0
 
     def __call__(self, image):
-        if not self.tag.enabled:
+        if self.tag.mode == "off":
             return self.inner(image)
         image = image.clone()
         key = (0,) if self.tag.mode == "episode" else (0, self.calls)

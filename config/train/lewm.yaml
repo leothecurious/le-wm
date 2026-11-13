@@ -40,7 +40,7 @@ num_preds: 1
 tag:
   mode: off
   size: 5
-  seed: ${seed}
+  seed: 0
 
 loss:
   sigreg:
