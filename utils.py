@@ -65,29 +65,36 @@ class RNGStateCallback(Callback):
 
 
 class SaveCkptCallback(Callback):
-    """Callback to save model checkpoint after each epoch using save_pretrained."""
+    """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs and ``weights_step_N.pt``
+    every ``step_interval`` optimizer steps (None = never), through save_pretrained."""
 
-    def __init__(self, run_name, cfg, epoch_interval: int = 1):
+    def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None):
         super().__init__()
         self.run_name = run_name
         self.cfg = cfg
         self.epoch_interval = epoch_interval
+        self.step_interval = step_interval
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        step = trainer.global_step
+        if self.step_interval and step and step % self.step_interval == 0 and trainer.is_global_zero:
+            self._save(pl_module.model, f"step_{step}")
 
     def on_train_epoch_end(self, trainer, pl_module):
         super().on_train_epoch_end(trainer, pl_module)
 
         if trainer.is_global_zero:
             if (trainer.current_epoch + 1) % self.epoch_interval == 0:
-                self._save(pl_module.model, trainer.current_epoch + 1)
+                self._save(pl_module.model, f"epoch_{trainer.current_epoch + 1}")
 
             if (trainer.current_epoch + 1) == trainer.max_epochs:
-                self._save(pl_module.model, trainer.current_epoch + 1)
+                self._save(pl_module.model, f"epoch_{trainer.current_epoch + 1}")
 
-    def _save(self, model, epoch):
+    def _save(self, model, name):
         from stable_worldmodel.wm.utils import save_pretrained
         save_pretrained(
             model,
             run_name=self.run_name,
             config=self.cfg,
-            filename=f'weights_epoch_{epoch}.pt',
+            filename=f'weights_{name}.pt',
         )
