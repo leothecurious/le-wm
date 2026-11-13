@@ -41,5 +41,9 @@ metrics:
   - {name: reverse_probe, groups: [state], kinds: [linear, mlp]}
   - {name: rank_spectrum, frame: null} # every valid frame; frame 0 is the episode start
 
+# frames stamped with the tag's colours (data.tag.size, data.tag.seed); delete to skip
+pairs:
+  n: 256
+
 output:
   filename: pusht_metrics.txt

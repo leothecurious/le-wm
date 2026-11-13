@@ -23,15 +23,16 @@ from omegaconf import OmegaConf
 def resolve_seed(tag_cfg, checkpoint_dir):
     """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``.
 
-    A tag that is off, or a ``checkpoint_dir`` of None (no checkpoint, as with
-    the random policy), gets seed 0.
+    Seed 0 when there is no saved tag to read: no checkpoint (the random
+    policy), no ``config.yaml`` (a downloaded model) or a checkpoint trained
+    before the tag existed. The seed is read even while the tag is off, as the
+    pair metric stamps the training colours regardless of mode.
     """
     if tag_cfg.get("seed") is not None:
         return
-    if tag_cfg.mode == "off" or checkpoint_dir is None:
-        tag_cfg.seed = 0
-        return
-    tag_cfg.seed = OmegaConf.load(Path(checkpoint_dir) / "config.yaml").tag.seed
+    config = None if checkpoint_dir is None else Path(checkpoint_dir) / "config.yaml"
+    saved = OmegaConf.load(config).get("tag") if config and config.exists() else None
+    tag_cfg.seed = saved.seed if saved else 0
 
 
 class PixelTag:

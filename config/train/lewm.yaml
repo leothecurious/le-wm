@@ -42,6 +42,11 @@ tag:
   size: 5
   seed: ${seed}
 
+# pair cosines of n tagged frames, logged every this many steps (null = off)
+pair:
+  every_n_steps: null
+  n: 256
+
 loss:
   sigreg:
     weight: 0.09
