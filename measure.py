@@ -7,6 +7,7 @@ import stable_worldmodel as swm
 import torch
 from omegaconf import DictConfig, OmegaConf
 
+import tag
 from metrics import data, suite
 from metrics.latents import Latents, extract
 
@@ -37,12 +38,14 @@ def get_latents(cfg, model, latents_path):
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
+    cfg = OmegaConf.merge({"data": {"tag": {"mode": "off", "size": 5, "seed": None}}}, cfg)
     model = swm.wm.utils.load_pretrained(cfg.policy)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+    tag.resolve_seed(cfg.data.tag, results_path)
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"

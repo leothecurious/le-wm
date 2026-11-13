@@ -15,6 +15,10 @@ data:
   seed: 0
   train_fraction: 0.8
   batch_size: 16
+  tag: # coloured corner square, mode off | episode | frame (see tag.py)
+    mode: "off"
+    size: 5
+    seed: null # the checkpoint's training tag seed
   num_workers: 4
   columns: # expected widths of the target columns
     - {column: state, dim: 7} # agent_x, agent_y, block_x, block_y, block_angle, agent_vx, agent_vy

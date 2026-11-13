@@ -14,6 +14,9 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 
+from tag import EvalTag, PixelTag, resolve_seed
+
+
 def img_transform(cfg):
     transform = transforms.Compose(
         [
@@ -58,9 +61,15 @@ def run(cfg: DictConfig):
     world = swm.World(**cfg.world, image_shape=(224, 224))
 
     # create the transform
+    tag_cfg = cfg.get("tag") or OmegaConf.create({"mode": "off", "size": 5, "seed": 0})
+    random_policy = cfg.policy == "random"
+    resolve_seed(
+        tag_cfg, None if random_policy else Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+    )
+    tag = PixelTag(**tag_cfg)
     transform = {
-        "pixels": img_transform(cfg),
-        "goal": img_transform(cfg),
+        "pixels": EvalTag(tag, img_transform(cfg)),
+        "goal": EvalTag(tag, img_transform(cfg)),
     }
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
