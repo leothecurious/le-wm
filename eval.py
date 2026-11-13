@@ -62,8 +62,10 @@ def run(cfg: DictConfig):
 
     # create the transform
     tag_cfg = cfg.get("tag") or OmegaConf.create({"mode": "off", "size": 5, "seed": 0})
-    if cfg.policy != "random":
-        resolve_seed(tag_cfg, Path(swm.data.utils.get_cache_dir(), cfg.policy).parent)
+    random_policy = cfg.policy == "random"
+    resolve_seed(
+        tag_cfg, None if random_policy else Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+    )
     tag = PixelTag(**tag_cfg)
     transform = {
         "pixels": EvalTag(tag, img_transform(cfg)),

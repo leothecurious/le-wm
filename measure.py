@@ -38,6 +38,7 @@ def get_latents(cfg, model, latents_path):
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
+    cfg = OmegaConf.merge({"data": {"tag": {"mode": "off", "size": 5, "seed": None}}}, cfg)
     model = swm.wm.utils.load_pretrained(cfg.policy)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()

@@ -15,15 +15,20 @@ saved config.
 from pathlib import Path
 
 import numpy as np
+import stable_worldmodel as swm
 import torch
 from omegaconf import OmegaConf
 
 
 def resolve_seed(tag_cfg, checkpoint_dir):
-    """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``."""
+    """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``.
+
+    A tag that is off, or a ``checkpoint_dir`` of None (no checkpoint, as with
+    the random policy), gets seed 0.
+    """
     if tag_cfg.get("seed") is not None:
         return
-    if tag_cfg.mode == "off":
+    if tag_cfg.mode == "off" or checkpoint_dir is None:
         tag_cfg.seed = 0
         return
     tag_cfg.seed = OmegaConf.load(Path(checkpoint_dir) / "config.yaml").tag.seed
@@ -58,47 +63,31 @@ class PixelTag:
         return pixels
 
     def wrap(self, dataset):
-        """``dataset`` with every clip stamped, or ``dataset`` itself when off."""
-        return dataset if self.mode == "off" else TaggedDataset(dataset, self)
+        """Make ``dataset`` stamp every clip it returns, in place; off leaves it alone."""
+        if self.mode == "off":
+            return dataset
+        if type(dataset) is not swm.data.HDF5Dataset:
+            raise TypeError(f"tag supports HDF5 datasets, got {type(dataset).__name__}")
+        dataset.__class__ = TaggedHDF5Dataset
+        dataset.tag = self
+        return dataset
 
 
-class TaggedDataset:
-    """Stamps the pixels of each clip a swm episode dataset returns.
+class TaggedHDF5Dataset(swm.data.HDF5Dataset):
+    """HDF5 dataset that stamps the tag on the raw pixels of each clip."""
 
-    The dataset's transform moves here so it runs on the stamped frames. Other
-    attributes are read from the wrapped dataset.
-    """
+    tag: PixelTag
 
-    def __init__(self, dataset, tag):
-        self.dataset = dataset
-        self.tag = tag
-        self.transform = dataset.transform
-        dataset.transform = None
-
-    def __getattr__(self, name):
-        return getattr(self.dataset, name)
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def _clip(self, episode, start, end):
-        ds = self.dataset
-        steps = ds._load_slice(episode, start, end)
-        self.tag.stamp(steps["pixels"], episode, start, ds.frameskip)
-        # The transform sees one action per row, so it runs before the reshape
-        # to one action per frame, as in stable_worldmodel's HDF5Dataset.
-        if self.transform:
-            steps = self.transform(steps)
-        if "action" in steps:
-            steps["action"] = steps["action"].reshape((end - start) // ds.frameskip, -1)
-        return steps
-
-    def __getitem__(self, idx):
-        episode, start = self.dataset.clip_indices[idx]
-        return self._clip(episode, start, start + self.dataset.span)
-
-    def load_chunk(self, episodes, starts, ends):
-        return [self._clip(e, s, t) for e, s, t in zip(episodes, starts, ends)]
+    def _load_slice(self, episode, start, end):
+        # The base class applies the transform inside ``_load_slice``; hold it
+        # back until the frames are stamped.
+        transform, self.transform = self.transform, None
+        try:
+            steps = super()._load_slice(episode, start, end)
+        finally:
+            self.transform = transform
+        self.tag.stamp(steps["pixels"], episode, start, self.frameskip)
+        return transform(steps) if transform else steps
 
 
 class EvalTag:
