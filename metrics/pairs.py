@@ -1,4 +1,4 @@
-"""What a representation keys on: paired-input cosine and tag-colour probe.
+"""What a representation keys on: the paired-input cosine.
 
 A sample of frames is encoded twice with a corner tag (see ``tag.py``): once
 with a colour of its own (``own``) and once with the colour of a partner frame
@@ -9,9 +9,7 @@ with a colour of its own (``own``) and once with the colour of a partner frame
   baseline      frame A against frame B, each with its own colour
 
 An encoder that follows the scene reads high on same_content and near 0 on
-same_tag; one that follows the tag reads the other way round. The colour probe
-decodes the stamped colour from the latent and reports error relative to
-chance, 100 being chance and 0 exact.
+same_tag; one that follows the tag reads the other way round.
 
 Pairing and cosines follow Enigma-Incorporated/The-Obsessed-Encoder@37819425
 (``common/pair_metrics.py``, ``leworldmodel/additional_files/callbacks/
@@ -25,7 +23,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from metrics import probes
 from utils import get_img_preprocessor
 
 REPS = ("backbone", "projection")
@@ -86,40 +83,14 @@ def pair_cosines(own, swap, partner):
     }
 
 
-def tag_probe(z, colors, kinds=("linear", "mlp"), train_fraction=0.8, seed=0):
-    """Decode the stamped colour from latents ``z`` (n, d); mean over r, g, b."""
-    colors = colors.numpy().astype(np.float64)
-    order = np.random.default_rng(seed).permutation(len(z))
-    cut = round(train_fraction * len(z))
-    tr, te = order[:cut], order[cut:]
-    z = z.numpy()
-    controls = [
-        probes.control_mae(colors[tr], colors[tr, c], colors[te], colors[te, c], False, seed)
-        for c in range(3)
-    ]
-    out = {}
-    for kind in kinds:
-        res = [
-            probes.probe_errors(kind, z[tr], colors[tr, c], z[te], colors[te, c], False, controls[c], seed)
-            for c in range(3)
-        ]
-        out[kind] = {k: float(np.mean([r[k] for r in res])) for k in ("mae", "eps", "r2")}
-    return out
-
-
-def measure(model, frames, tag, img_size, kinds=("linear", "mlp"), train_fraction=0.8, seed=0):
-    """Pair cosines and colour probe of ``model`` on ``frames`` stamped by ``tag``."""
+def measure(model, frames, tag, img_size, seed=0):
+    """Pair cosines of ``model`` on ``frames`` stamped by ``tag``."""
     n = len(frames)
     colors = torch.stack([tag.color(j) for j in range(n)])
     partner = cyclic_derangement(n, np.random.default_rng(seed))
     own = encode(model, stamp(frames, colors, tag.size), img_size)
     swap = encode(model, stamp(frames, colors[partner], tag.size), img_size)
-    return {
-        "pair": {rep: pair_cosines(own[rep], swap[rep], partner) for rep in REPS},
-        "tag_probe": {
-            rep: tag_probe(own[rep], colors, kinds, train_fraction, seed) for rep in REPS
-        },
-    }
+    return {rep: pair_cosines(own[rep], swap[rep], partner) for rep in REPS}
 
 
 class PairCallback(pl.Callback):

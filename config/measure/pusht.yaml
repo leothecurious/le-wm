@@ -43,9 +43,7 @@ metrics:
 
 # frames stamped with the tag's colours (data.tag.size, data.tag.seed); delete to skip
 pairs:
-  n: 1024
-  kinds: [linear, mlp]
-  train_fraction: 0.8
+  n: 256
 
 output:
   filename: pusht_metrics.txt

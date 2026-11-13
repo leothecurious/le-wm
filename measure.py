@@ -13,7 +13,7 @@ from tag import PixelTag, resolve_seed
 
 
 def measure_pairs(cfg, model):
-    """Pair cosines and colour probe on dataset frames stamped with the tag's colours."""
+    """Pair cosines on dataset frames stamped with the tag's colours."""
     ds = swm.data.load_dataset(
         cfg.data.name,
         transform=None,
@@ -24,9 +24,7 @@ def measure_pairs(cfg, model):
     )
     frames = pairs.sample_frames(ds, cfg.pairs.n, cfg.data.seed)
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
-    return pairs.measure(
-        model, frames, tag, cfg.data.img_size, cfg.pairs.kinds, cfg.pairs.train_fraction, cfg.data.seed
-    )
+    return pairs.measure(model, frames, tag, cfg.data.img_size, cfg.data.seed)
 
 
 def get_latents(cfg, model, latents_path):

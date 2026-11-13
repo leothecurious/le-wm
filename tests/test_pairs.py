@@ -36,7 +36,7 @@ def frames():
 
 
 def measure(model):
-    return pairs.measure(model, frames(), PixelTag("episode", 5, 0), SIZE, kinds=("linear",))
+    return pairs.measure(model, frames(), PixelTag("episode", 5, 0), SIZE)
 
 
 def test_partner_is_one_cycle_without_fixed_points():
@@ -49,19 +49,11 @@ def test_partner_is_one_cycle_without_fixed_points():
 
 
 def test_pair_cosines_separate_tag_readers_from_scene_readers():
-    tag_pair = measure(tag_reader)["pair"]["backbone"]
-    scene_pair = measure(scene_reader)["pair"]["backbone"]
+    tag_pair = measure(tag_reader)["backbone"]
+    scene_pair = measure(scene_reader)["backbone"]
 
     assert tag_pair["same_tag"] > 0.9
     assert abs(tag_pair["same_content"]) < 0.2
     assert scene_pair["same_content"] > 0.99
     assert abs(scene_pair["same_tag"]) < 0.2
     assert abs(tag_pair["baseline"]) < 0.2 and abs(scene_pair["baseline"]) < 0.2
-
-
-def test_tag_probe_decodes_colour_only_from_the_tag_reader():
-    on_tag = measure(tag_reader)["tag_probe"]["backbone"]["linear"]["eps"]
-    on_scene = measure(scene_reader)["tag_probe"]["backbone"]["linear"]["eps"]
-
-    assert on_tag < 20
-    assert on_scene > 80
