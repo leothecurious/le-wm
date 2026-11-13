@@ -107,26 +107,10 @@ class Windows(torch.utils.data.Dataset):
         }
 
 
-def episode_gradient(x, offsets, lengths, unwrap=False):
-    """Central difference per dataset row, never across episode boundaries.
-
-    Endpoints use one-sided differences; one-row episodes get zero.
-    """
-    d = np.zeros_like(x, dtype=np.float64)
-    for o, n in zip(offsets, lengths):
-        if n < 2:
-            continue
-        seg = x[o : o + n].astype(np.float64)
-        d[o : o + n] = np.gradient(np.unwrap(seg) if unwrap else seg)
-    return d
-
-
 def column_targets(ds, specs):
     """Per-row target values for the whole dataset, shape (rows, len(specs)).
 
-    Each spec reads ``column[:, index]``. With ``derivative`` it is the
-    per-row central difference inside episodes, unwrapped first when the
-    source is an ``angle``.
+    Each spec reads ``column[:, index]``.
     """
     cols, out = {}, []
     for spec in specs:
@@ -134,8 +118,6 @@ def column_targets(ds, specs):
             cols[spec.column] = np.asarray(ds.get_col_data(spec.column), dtype=np.float64)
         col = cols[spec.column]
         x = col[:, spec.get("index", 0)] if col.ndim > 1 else col
-        if spec.get("derivative", False):
-            x = episode_gradient(x, ds.offsets, ds.lengths, unwrap=spec.get("angle", False))
         assert np.ptp(x) > 0, f"target {spec.name} is constant"
         out.append(x)
     return np.stack(out, 1)
@@ -158,7 +140,7 @@ def window_targets(ds, windows, num_frames, specs):
 def target_meta(specs):
     """Names, angle flags and groups of the targets, in spec order."""
     names = [s.name for s in specs]
-    angle = [bool(s.get("angle", False)) and not s.get("derivative", False) for s in specs]
+    angle = [bool(s.get("angle", False)) for s in specs]
     groups = [s.get("group", "state") for s in specs]
     return names, angle, groups
 

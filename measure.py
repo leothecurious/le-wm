@@ -15,13 +15,12 @@ def get_latents(cfg, model, latents_path):
     if cfg.get("latents_path"):
         return Latents.load(cfg.latents_path)
 
-    r = cfg.rollout
-    num_frames = r.context + r.max_horizon
+    w = cfg.windows
     loader, target, episode, train = data.build(
-        cfg.data, cfg.targets, num_frames, r.context + 1, cfg.get("cache_dir")
+        cfg.data, cfg.targets, w.frames, w.min_frames, cfg.get("cache_dir")
     )
     names, angle, group = data.target_meta(cfg.targets)
-    out = extract(model, loader, r.context, r.history_size, r.precision)
+    out = extract(model, loader, w.precision)
     lat = Latents(
         **out,
         target=torch.from_numpy(target),
@@ -30,8 +29,6 @@ def get_latents(cfg, model, latents_path):
         target_names=names,
         target_angle=angle,
         target_group=group,
-        context=r.context,
-        history_size=r.history_size,
     )
     lat.save(latents_path)
     return lat
@@ -52,7 +49,7 @@ def run(cfg: DictConfig):
 
     start_time = time.time()
     lat = get_latents(cfg, model, latents_path)
-    metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True), model)
+    metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
     end_time = time.time()
 
     print(json.dumps(metrics, indent=1))

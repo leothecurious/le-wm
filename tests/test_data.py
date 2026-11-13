@@ -1,29 +1,33 @@
 import h5py
 import numpy as np
+import pytest
 import stable_worldmodel as swm
 from omegaconf import OmegaConf
 
 from metrics.data import column_targets
 
 
-def test_derivatives_stay_inside_episodes(tmp_path):
-    x = np.array([0, 1, 2, 3, 100, 110, 120], dtype=np.float32)
-    angle = np.array([3.0, 3.1, -3.1, -3.0, 0.0, 0.1, 0.2], dtype=np.float32)
+def toy_dataset(tmp_path, state):
     path = tmp_path / "toy.h5"
     with h5py.File(path, "w", libver="latest") as f:
         f["ep_len"] = np.array([4, 3])
         f["ep_offset"] = np.array([0, 4])
-        f["state"] = np.stack([x, angle], 1)
+        f["state"] = state
         f["action"] = np.zeros((7, 2), dtype=np.float32)
-    ds = swm.data.HDF5Dataset(path=path, keys_to_load=["state", "action"])
+    return swm.data.HDF5Dataset(path=path, keys_to_load=["state", "action"])
 
-    specs = OmegaConf.create([
-        {"name": "vx", "column": "state", "index": 0, "derivative": True},
-        {"name": "omega", "column": "state", "index": 1, "derivative": True, "angle": True},
-    ])
-    d = column_targets(ds, specs)
 
-    np.testing.assert_allclose(d[:, 0], [1, 1, 1, 1, 10, 10, 10])
-    across_wrap = (2 * np.pi - 6.1) / 2
-    np.testing.assert_allclose(d[:4, 1], [0.1, across_wrap, across_wrap, 0.1], atol=1e-5)
-    np.testing.assert_allclose(d[4:, 1], 0.1, atol=1e-5)
+def test_targets_read_the_indexed_column(tmp_path):
+    state = np.arange(14, dtype=np.float32).reshape(7, 2)
+    ds = toy_dataset(tmp_path, state)
+    specs = OmegaConf.create([{"name": "b", "column": "state", "index": 1}])
+
+    np.testing.assert_allclose(column_targets(ds, specs)[:, 0], state[:, 1])
+
+
+def test_constant_target_is_rejected(tmp_path):
+    ds = toy_dataset(tmp_path, np.ones((7, 2), dtype=np.float32))
+    specs = OmegaConf.create([{"name": "a", "column": "state", "index": 0}])
+
+    with pytest.raises(AssertionError, match="constant"):
+        column_targets(ds, specs)
