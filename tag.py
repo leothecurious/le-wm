@@ -6,16 +6,35 @@ feature that is constant within each episode. In ``frame`` mode the colour
 changes every frame, so it cannot be predicted from the past and acts as a
 control. Colours are a deterministic hash of ``(seed, episode)`` or
 ``(seed, episode, step)``, so any run can be reproduced and checked. Training,
-measurement and planning must use the same seed for the colours to coincide;
-all three default to 0.
+measurement and planning must use the same seed for the colours to coincide.
+Training takes the run seed. Measurement and planning leave ``seed`` null and
+read it from the config saved next to the checkpoint.
 
 Stamping happens on the raw uint8 frame, before normalisation and resizing,
 as in the obsessed-encoder post and repository (Enigma-Incorporated/
 The-Obsessed-Encoder@37819425, ``pixel_tag.py``).
 """
 
+from pathlib import Path
+
 import numpy as np
 import torch
+from omegaconf import OmegaConf
+
+def resolve_seed(tag_cfg, checkpoint_dir):
+    """Fill a null ``tag_cfg.seed`` from the config saved with the checkpoint.
+
+    ``checkpoint_dir`` is the directory holding the weights and the training
+    ``config.yaml``. A tag that is off needs no seed.
+    """
+    if tag_cfg.get("seed") is not None:
+        return
+    if tag_cfg.mode == "off":
+        tag_cfg.seed = 0
+        return
+    saved = OmegaConf.load(Path(checkpoint_dir) / "config.yaml")
+    tag_cfg.seed = saved.tag.seed
+
 
 class PixelTag:
     """Colour hash and corner stamp for one ``mode``, square ``size`` and ``seed``."""
@@ -102,9 +121,12 @@ class EvalTag:
     def __call__(self, image):
         if self.tag.mode == "off":
             return self.inner(image)
+        assert image.dtype == torch.uint8 and image.shape[0] == 3, (
+            f"tag expects (3, H, W) uint8 frames, got {image.dtype} {tuple(image.shape)}"
+        )
         image = image.clone()
         key = (0,) if self.tag.mode == "episode" else (0, self.calls)
         self.calls += 1
         n = self.tag.size
-        image[:, :n, :n] = self.tag.color(*key).view(3, 1, 1).to(image.dtype)
+        image[:, :n, :n] = self.tag.color(*key).view(3, 1, 1)
         return self.inner(image)

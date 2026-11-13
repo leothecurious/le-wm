@@ -21,7 +21,7 @@ seed: 42
 tag:
   mode: off
   size: 5
-  seed: 0
+  seed: null # the checkpoint's training tag seed
 policy: random # ckpt name or random
 
 plan_config:

@@ -1,7 +1,9 @@
 import numpy as np
+import pytest
 import torch
+from omegaconf import OmegaConf
 
-from tag import EvalTag, PixelTag
+from tag import EvalTag, PixelTag, resolve_seed
 
 
 def enigma_color(seed, *key):
@@ -88,3 +90,19 @@ def test_eval_tag_uses_one_colour_in_episode_mode_and_new_ones_in_frame_mode():
     torch.testing.assert_close(first[:, 0, 0], enigma_color(0, 0))
     assert (per_frame(frame)[:, 0, 0] != per_frame(frame)[:, 0, 0]).any()
     assert not frame.any()
+
+
+def test_eval_tag_rejects_non_uint8_frames():
+    with pytest.raises(AssertionError, match="uint8"):
+        EvalTag(PixelTag("episode"), lambda x: x)(torch.zeros(3, 16, 16))
+
+
+def test_null_seed_is_read_from_the_checkpoint_config(tmp_path):
+    OmegaConf.save({"tag": {"mode": "episode", "seed": 2}}, tmp_path / "config.yaml")
+    tag_cfg = OmegaConf.create({"mode": "episode", "size": 5, "seed": None})
+    resolve_seed(tag_cfg, tmp_path)
+    assert tag_cfg.seed == 2
+
+    explicit = OmegaConf.create({"mode": "episode", "size": 5, "seed": 9})
+    resolve_seed(explicit, tmp_path)
+    assert explicit.seed == 9
