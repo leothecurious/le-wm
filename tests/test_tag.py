@@ -7,8 +7,8 @@ from tag import EvalTag, PixelTag, resolve_seed
 
 
 def enigma_color(seed, *key):
-    """The colour hash of Enigma-Incorporated/The-Obsessed-Encoder@37819425,
-    additional_files/pixel_tag.py, kept as the reference to match."""
+    """Frozen copy of the colour hash in Enigma-Incorporated/The-Obsessed-Encoder@37819425
+    (additional_files/pixel_tag.py)."""
     rng = np.random.default_rng(np.random.SeedSequence([seed, *key]))
     return torch.from_numpy(rng.integers(0, 256, size=3, dtype=np.uint8))
 
@@ -60,8 +60,7 @@ def test_frame_mode_changes_every_frame_and_follows_the_row_in_the_episode():
     assert len(colors) == 3
     # frame t of the clip starting at row 1 is row 1 + 2t; row 2 of clip 0 is its frame 1
     assert (b[0, :, 0, 0] != a[1, :, 0, 0]).any()
-    expected = enigma_color(1, 7, 4 + 2)
-    torch.testing.assert_close(ds[2]["pixels"][1, :, 0, 0], expected)
+    torch.testing.assert_close(ds[2]["pixels"][1, :, 0, 0], enigma_color(1, 7, 4 + 2))
 
 
 def test_transform_sees_stamped_frames_and_load_chunk_matches_getitem():
