@@ -38,7 +38,7 @@ num_preds: 1
 
 # coloured corner square, mode off | episode | frame (see tag.py)
 tag:
-  mode: off
+  mode: "off"
   size: 5
   seed: ${seed}
 

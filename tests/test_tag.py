@@ -105,3 +105,16 @@ def test_null_seed_is_read_from_the_checkpoint_config(tmp_path):
     explicit = OmegaConf.create({"mode": "episode", "size": 5, "seed": 9})
     resolve_seed(explicit, tmp_path)
     assert explicit.seed == 9
+
+
+@pytest.mark.parametrize(
+    "path, key",
+    [
+        ("config/train/lewm.yaml", "tag.mode"),
+        ("config/eval/pusht.yaml", "tag.mode"),
+        ("config/measure/pusht.yaml", "data.tag.mode"),
+    ],
+)
+def test_configs_default_to_the_string_off(path, key):
+    # unquoted YAML 1.1 `off` loads as False
+    assert OmegaConf.select(OmegaConf.load(path), key) == "off"
