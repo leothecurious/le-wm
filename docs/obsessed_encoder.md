@@ -49,6 +49,48 @@ for N in 5000 10000 20000 50000; do
 done
 ```
 
+## H-JEPA
+
+H-JEPA ([Zhang et al. 2026](https://arxiv.org/abs/2610.06805),
+[code](https://github.com/kevinghst/H-JEPA) at `97054ec`) adds a second level on top
+of LeWM that predicts every second step from a latent action. `model=hjepa` is its Push-T
+configuration (`pusht_hjepa_l2`) and works with the arms unchanged:
+
+```bash
+python train.py data=pusht +arm=$ARM seed=$S model=hjepa
+```
+
+The run is saved as `hjepa_${ARM}_seed${S}`, with the same weights and pair logging as LeWM.
+The schedule is LeWM's (10 epochs, our data loader); H-JEPA trained 9. Level 1 is the LeWM
+`JEPA` with H-JEPA's smaller predictor (4 layers, 8 heads, 1024 feed-forward instead of
+6, 16, 2048), so `measure.py` reads it unchanged. `model.levels(pixels)` returns the latents
+of both levels.
+
+`eval.py` plans with H-JEPA's top-down planner, level 2 first and level 1 toward its first subgoal:
+
+```bash
+python eval.py --config-name=pusht_hjepa policy=hjepa_${ARM}_seed${S}/weights_epoch_10.pt tag.mode=$MODE
+```
+
+H-JEPA's own Push-T protocol (50 tasks, goal 75 steps ahead, 90-step budget) is a config
+override away. The tasks are sampled from `pusht_expert_train` here, not H-JEPA's fixed set from its validation split:
+
+```bash
+python eval.py --config-name=pusht_hjepa policy=... eval.goal_offset_steps=75 eval.eval_budget=90
+```
+
+The released checkpoint (`jepa-world-models/h-jepa`, `pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt`, 93 MB)
+converts into a run `eval.py` can load:
+
+```bash
+hf download jepa-world-models/h-jepa pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt --local-dir $DIR
+python hjepa.py $DIR/pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt hjepa_released
+python eval.py --config-name=pusht_hjepa policy=hjepa_released/weights.pt eval.goal_offset_steps=75 eval.eval_budget=90
+```
+
+The tests compare the port with a frozen copy of H-JEPA's code in `tests/reference`;
+`HJEPA_CKPT=$DIR/.../pusht_hjepa_l2_object.ckpt` adds a check on the released weights.
+
 ## What reproduces
 
 - `tag_episode`: backbone same-tag above 0.5 and same-content within ±0.2 early in
