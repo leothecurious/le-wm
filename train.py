@@ -10,7 +10,6 @@ import torch
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from hjepa import optimizer_factory
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg
 from tag import PixelTag
@@ -107,8 +106,8 @@ def run(cfg):
     world_model = hydra.utils.instantiate(cfg.model)
 
     optimizer = dict(cfg.optimizer)
-    if hasattr(world_model, "param_groups"):
-        optimizer = optimizer_factory(world_model, optimizer)
+    if hasattr(world_model, "optimizer_factory"):
+        optimizer = world_model.optimizer_factory(optimizer)
     optimizers = {
         'model_opt': {
             "modules": 'model',
@@ -149,7 +148,7 @@ def run(cfg):
         OmegaConf.save(cfg, f)
 
     object_dump_callback = SaveCkptCallback(
-        run_name=run_id or cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
+        run_name=cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
         step_interval=cfg.checkpoint.every_n_steps,
     )
 

@@ -8,18 +8,11 @@ level-1 action embeddings. ``levels`` returns the latents of both levels.
 
 Ported from Zhang et al. 2026, "H-JEPA: End-to-End Learning of Hierarchical World
 Models for Visual Planning" (arXiv:2610.06805), kevinghst/H-JEPA@97054ec (MIT),
-config ``pusht_hjepa_l2``. Run ``python hjepa.py CKPT RUN`` to convert a
-released ``*_object.ckpt`` into a run loadable by ``load_pretrained(RUN/weights.pt)``.
+config ``pusht_hjepa_l2``. ``scripts/convert_hjepa.py`` converts its released checkpoint.
 
 MIT License, Copyright (c) 2026 Wancong Zhang, Basile Terver, Mike Rabbat, Yann LeCun, Randall Balestriero
 (tests/reference/LICENSE).
 """
-
-import pickle
-import re
-import sys
-import types
-from pathlib import Path
 
 import torch
 from einops import rearrange
@@ -223,100 +216,8 @@ class HJEPA(JEPA):
             {"params": upper, "lr": self.upper_lr},
         ]
 
+    def optimizer_factory(self, cfg):
+        """Optimizer for ``spt.Module`` with level 1 at ``cfg['lr']`` and level 2 at ``upper_lr``."""
+        import stable_pretraining as spt
 
-def optimizer_factory(model, cfg):
-    """Optimizer for ``spt.Module`` with level 1 at ``cfg['lr']`` and level 2 at ``model.upper_lr``."""
-    import stable_pretraining as spt
-
-    return lambda _params: spt.optim.create_optimizer(model.param_groups(cfg["lr"]), cfg)
-
-
-# --- released checkpoints -------------------------------------------------------------------
-
-
-class _Stub(nn.Module):
-    pass
-
-
-class _StubUnpickler(pickle.Unpickler):
-    """Rebuilds H-JEPA's pickled model as plain modules, so their code is not needed to read the weights."""
-
-    def find_class(self, module, name):
-        module = "builtins" if module == "__builtin__" else module
-        if module.split(".")[0] in ("torch", "builtins", "collections", "_codecs", "numpy", "copyreg"):
-            return super().find_class(module, name)
-        cls = type(name, (_Stub,), {})
-        cls.__module__ = module
-        return cls
-
-
-_pickle_shim = types.ModuleType("stub_pickle")
-vars(_pickle_shim).update({k: getattr(pickle, k) for k in dir(pickle)})
-_pickle_shim.Unpickler = _StubUnpickler
-
-_QKV = {"q": "query", "k": "key", "v": "value"}
-_VIT_RENAMES = [
-    (r"\.attention\.([qkv])_proj\.", lambda m: f".attention.attention.{_QKV[m[1]]}."),
-    (r"\.attention\.o_proj\.", lambda m: ".attention.output.dense."),
-    (r"\.mlp\.fc1\.", lambda m: ".intermediate.dense."),
-    (r"\.mlp\.fc2\.", lambda m: ".output.dense."),
-]
-_PREFIXES = [
-    ("jepas.0.encoder.encoder.", "encoder."),
-    ("jepas.0.encoder.projector.", "projector."),
-    ("jepas.0.predictor.predictor.", "predictor."),
-    ("jepas.0.predictor.projector.", "pred_proj."),
-    ("jepas.0.action_embed.", "action_encoder."),
-    ("jepas.1.latent_action_queue", "upper.latent_action_queue"),
-    ("jepas.1.encoder.encoder.", "upper.encoder."),
-    ("jepas.1.predictor.predictor.", "upper.predictor."),
-    ("jepas.1.predictor.projector.", "upper.pred_proj."),
-    ("jepas.1.action_embed.", "upper.action_encoder."),
-    ("jepas.1.action_encoder.", "upper.action_pool."),
-]
-
-
-def from_released(state):
-    """Rename a released H-JEPA state dict (``HJEPA.jepas.N...``, transformers 5 ViT keys) to ``HJEPA``'s."""
-    out = {}
-    for key, value in state.items():
-        for old, new in _PREFIXES:
-            if key.startswith(old):
-                key = new + key[len(old) :]
-                break
-        else:
-            raise KeyError(key)
-        if key.startswith("encoder."):
-            key = key.replace("encoder.layers.", "encoder.encoder.layer.")
-            for pattern, repl in _VIT_RENAMES:
-                key = re.sub(pattern, repl, key)
-        if key == "encoder.embeddings.mask_token":  # unused, our encoder is built without it
-            continue
-        out[key] = value
-    return out
-
-
-def load_released(path):
-    """State dict of a released ``*_object.ckpt`` under ``HJEPA``'s names."""
-    model = torch.load(path, map_location="cpu", weights_only=False, pickle_module=_pickle_shim)
-    return from_released(model.state_dict())
-
-
-def convert(path, run_name):
-    """Save a released checkpoint as ``checkpoints/<run_name>/weights.pt`` with its ``config.json``."""
-    import hydra
-    import stable_worldmodel as swm
-    from hydra.utils import instantiate
-    from omegaconf import open_dict
-
-    with hydra.initialize_config_dir(str(Path(__file__).parent / "config" / "train"), version_base=None):
-        cfg = hydra.compose("lewm", overrides=["model=hjepa"])
-    with open_dict(cfg):
-        cfg.model.action_encoder.input_dim = cfg.data.dataset.frameskip * 2
-    model = instantiate(cfg.model)
-    model.load_state_dict(load_released(path))
-    swm.wm.utils.save_pretrained(model, run_name=run_name, config=cfg.model, filename="weights.pt")
-
-
-if __name__ == "__main__":
-    convert(*sys.argv[1:3])
+        return lambda _params: spt.optim.create_optimizer(self.param_groups(cfg["lr"]), cfg)

@@ -19,7 +19,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn.attention import SDPBackend, sdpa_kernel
 
 
 @dataclass
@@ -259,7 +258,7 @@ class HierarchicalSolver:
         obs, goal = self._encode(info_dict["pixels"]), self._encode(info_dict["goal"])
 
         subgoal = subgoal_action = None
-        with torch.enable_grad(), sdpa_kernel(SDPBackend.MATH):
+        with torch.enable_grad():
             if upper_horizons[call] > 1:
                 info = {
                     "embed_0": obs[1], "goal_embed_0": goal[1], "project": False,
