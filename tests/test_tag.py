@@ -9,7 +9,7 @@ import torch
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-from tag import EvalTag, PixelTag, checkpoint_dir, resolve_seed
+from tag import EvalTag, PixelTag, resolve_seed
 
 
 def enigma_color(seed, *key):
@@ -125,26 +125,6 @@ def test_null_seed_is_read_from_the_checkpoint_config(tmp_path):
     explicit = OmegaConf.create({"mode": "episode", "size": 5, "seed": 9})
     resolve_seed(explicit, tmp_path)
     assert explicit.seed == 9
-
-
-def test_checkpoint_dir_finds_the_trained_run_under_checkpoints(tmp_path):
-    run = tmp_path / "checkpoints" / "tag_episode_seed1"
-    run.mkdir(parents=True)
-    OmegaConf.save({"tag": {"mode": "episode", "seed": 1}}, run / "config.yaml")
-    (tmp_path / "tag_episode_seed1").mkdir()  # where measure.py and eval.py write their output
-
-    found = checkpoint_dir(tmp_path, "tag_episode_seed1/weights_epoch_10.pt")
-    assert found == run
-    tag_cfg = OmegaConf.create({"mode": "episode", "size": 5, "seed": None})
-    resolve_seed(tag_cfg, found)
-    assert tag_cfg.seed == 1
-
-
-def test_checkpoint_dir_falls_back_to_the_cache_and_to_none(tmp_path):
-    (tmp_path / "pretrained").mkdir()
-    OmegaConf.save({"tag": {"mode": "off", "seed": 4}}, tmp_path / "pretrained" / "config.yaml")
-    assert checkpoint_dir(tmp_path, "pretrained/weights.pt") == tmp_path / "pretrained"
-    assert checkpoint_dir(tmp_path, "missing/weights.pt") is None
 
 
 def test_null_seed_is_read_even_while_the_tag_is_off(tmp_path):
