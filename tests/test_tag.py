@@ -1,10 +1,12 @@
 import pickle
+from pathlib import Path
 
 import h5py
 import numpy as np
 import pytest
 import stable_worldmodel as swm
 import torch
+from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 from tag import EvalTag, PixelTag, resolve_seed
@@ -153,3 +155,25 @@ def test_null_seed_without_a_saved_tag_is_zero(tmp_path):
 def test_configs_default_to_the_string_off(path, key):
     # unquoted YAML 1.1 `off` loads as False
     assert OmegaConf.select(OmegaConf.load(path), key) == "off"
+
+
+def arm(name, seed=2):
+    with initialize_config_dir(str(Path("config/train").resolve()), version_base=None):
+        return compose("lewm", overrides=[f"+arm={name}", f"seed={seed}"])
+
+
+def test_square_arms_differ_only_in_the_tag_mode():
+    episode, frame = arm("tag_episode"), arm("tag_frame")
+    assert (episode.tag.mode, frame.tag.mode, arm("baseline").tag.mode) == ("episode", "frame", "off")
+    assert episode.tag.seed == frame.tag.seed == 2
+    assert episode.subdir == "tag_episode_seed2"
+    for key in ("pair", "checkpoint"):
+        assert episode[key] == frame[key] == arm("baseline")[key]
+
+    def without_mode_and_name(cfg):
+        settings = OmegaConf.to_container(cfg)
+        settings.pop("output_model_name")
+        settings["tag"].pop("mode")
+        return settings
+
+    assert without_mode_and_name(episode) == without_mode_and_name(frame)

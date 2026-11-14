@@ -47,6 +47,10 @@ pair:
   every_n_steps: null
   n: 256
 
+# also save weights_step_N.pt every this many optimizer steps (null = epochs only)
+checkpoint:
+  every_n_steps: null
+
 loss:
   sigreg:
     weight: 0.09

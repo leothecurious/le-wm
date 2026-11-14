@@ -52,7 +52,7 @@ def run(cfg: DictConfig):
     model.requires_grad_(False)
 
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    resolve_seed(cfg.data.tag, results_path)
+    resolve_seed(cfg.data.tag, Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent)
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
