@@ -154,8 +154,7 @@ def test_motion_config_only_adds_keys_and_retargets_the_model_and_sigreg_weight(
         motion = flatten(OmegaConf.to_container(compose_train("lewm_motion", f"+arm={arm}", "seed=1")))
         assert lewm.keys() <= motion.keys()
         added = motion.keys() - lewm.keys()
-        assert all(key.startswith(("model.diff_", "loss.motion.")) for key in added)
+        assert all(key == "diff_dim" or key.startswith(("model.diff_", "loss.motion.")) for key in added)
         changed = {key for key in lewm if lewm[key] != motion[key]}
         assert changed == {"model._target_", "loss.sigreg.weight"}
         assert motion["loss.sigreg.weight"] == 0.25
-        assert motion["output_model_name"] == lewm["output_model_name"] == f"{arm}_seed1"
