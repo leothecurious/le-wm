@@ -20,6 +20,19 @@ import torch
 from omegaconf import OmegaConf
 
 
+def checkpoint_dir(cache_dir, policy):
+    """Folder of the weights ``policy`` names, where train.py saved ``config.yaml``.
+
+    Trained runs sit under ``checkpoints/`` in the cache, and a downloaded model
+    directly in it. None when neither folder has a ``config.yaml``.
+    """
+    for base in (Path(cache_dir) / "checkpoints", Path(cache_dir)):
+        folder = (base / policy).parent
+        if (folder / "config.yaml").exists():
+            return folder
+    return None
+
+
 def resolve_seed(tag_cfg, checkpoint_dir):
     """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``.
 

@@ -68,14 +68,15 @@ frames unless marked. Pair cosines are backbone reads.
 
 | Run | Planning success | same-tag | same-content | State probe R² (linear / MLP) | Effective rank |
 |---|---|---|---|---|---|
-| `baseline` seed 1 | 98% | 0.02 | 0.99 | 0.95 / 0.99 | 121 |
-| `baseline` seed 2 | 92% | 0.01 | 0.99 | 0.94 / 0.99 | 122 |
+| `pusht_seed1` (baseline) | 98% | 0.02 | 0.99 | 0.95 / 0.99 | 121 |
+| `pusht_seed2` (baseline) | 92% | 0.01 | 0.99 | 0.94 / 0.99 | 122 |
 | `tag_episode` seed 0 | 4% | 0.95 | 0.02 | 0.62 / 0.71 | 4.0 |
 | `tag_episode` seed 0, tagged frames | | | | 0.18 / −1.34 | 115 |
 | `tag_frame` seed 0 | 96% | 0.01 | 1.00 | 0.96 / 0.99 | 119 |
 
-Seed 0 reproduces both arms. In `tag_episode` the pair cosines are already at
-same-tag 0.84 and same-content 0.13 at step 25k, and planning is 2%, 6% and 10%
+Seed 0 reproduces both arms. In `tag_episode` the pair cosines swap at about step 600
+(same-tag 0.25, same-content 0.71 at step 600) and by step 1400 they are
+0.78 and 0.19, against 0.84 and 0.13 at step 25k. Planning is 2%, 6% and 10%
 at steps 5k, 15k and 25k. On clean frames its latent collapses to about four
 dimensions with 99% of the variance in the top two. The MLP probe on tagged
 frames is below the control and is the least stable number here, so read the

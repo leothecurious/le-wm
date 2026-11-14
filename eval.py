@@ -14,7 +14,7 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 
-from tag import EvalTag, PixelTag, resolve_seed
+from tag import EvalTag, PixelTag, checkpoint_dir, resolve_seed
 
 
 def img_transform(cfg):
@@ -64,7 +64,7 @@ def run(cfg: DictConfig):
     tag_cfg = cfg.get("tag") or OmegaConf.create({"mode": "off", "size": 5, "seed": 0})
     random_policy = cfg.policy == "random"
     resolve_seed(
-        tag_cfg, None if random_policy else Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+        tag_cfg, None if random_policy else checkpoint_dir(swm.data.utils.get_cache_dir(), cfg.policy)
     )
     tag = PixelTag(**tag_cfg)
     transform = {

@@ -9,7 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from metrics import data, pairs, suite
 from metrics.latents import Latents, extract
-from tag import PixelTag, resolve_seed
+from tag import PixelTag, checkpoint_dir, resolve_seed
 
 
 def measure_pairs(cfg, model):
@@ -51,8 +51,9 @@ def run(cfg: DictConfig):
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    resolve_seed(cfg.data.tag, results_path)
+    cache_dir = swm.data.utils.get_cache_dir()
+    results_path = Path(cache_dir, cfg.policy).parent
+    resolve_seed(cfg.data.tag, checkpoint_dir(cache_dir, cfg.policy))
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
