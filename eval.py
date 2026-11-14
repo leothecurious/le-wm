@@ -100,7 +100,7 @@ def run(cfg: DictConfig):
         model = model.eval()
         model.requires_grad_(False)
         model.interpolate_pos_encoding = True
-        config = swm.PlanConfig(**cfg.plan_config)
+        config = hydra.utils.instantiate(cfg.plan_config) if "_target_" in cfg.plan_config else swm.PlanConfig(**cfg.plan_config)
         solver = hydra.utils.instantiate(cfg.solver, model=model)
         policy = swm.policy.WorldModelPolicy(
             solver=solver, config=config, process=process, transform=transform

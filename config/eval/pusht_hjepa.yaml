@@ -1,0 +1,13 @@
+# H-JEPA's planner. To score a checkpoint on H-JEPA's Push-T protocol add
+# eval.goal_offset_steps=75 eval.eval_budget=90 (LeWM's is 25 and 50).
+defaults:
+  - pusht
+  - override solver: hjepa
+  - _self_
+
+plan_config:
+  _target_: hjepa_planner.PlanConfig
+  history_len: 1
+  horizon: 2
+  receding_horizon: 2
+  action_block: 5
