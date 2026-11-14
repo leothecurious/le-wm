@@ -49,6 +49,33 @@ for N in 5000 10000 20000 50000; do
 done
 ```
 
+## MotionJEPA
+
+`config/train/lewm_motion.yaml` adds the MotionJEPA branch
+([Karmann et al. 2026](https://arxiv.org/abs/2609.23881)) to LeWM, ported from the
+MIT-licensed [vivoTechResearch/motionjepa](https://github.com/vivoTechResearch/motionjepa)
+at `d732c4f`. A second ViT encodes the difference of consecutive frames, and an MLP
+predicts that embedding from the two image latents. The loss weights are theirs, 0.25 on
+SIGReg of the latent, 2 on SIGReg of the difference embedding and 0.5 on the difference
+prediction. The image encoder, planner and training loop are LeWM's, and planning costs
+the main latent. The difference branch is 8-dimensional on 112-pixel difference images,
+as in their benchmark config.
+
+Their benchmark trains at batch size 64. Here the batch size stays at LeWM's 128, so the
+two models are compared under one training setup. Add `loader.batch_size=64` to match theirs.
+
+Their "ours" runs also train a pixel decoder and pose probes on detached latents. These add
+no encoder gradient and are left out, but they count toward the global gradient-norm clip
+of 1.0 in their runs.
+
+The arms work as they are, and the run is saved as `motion_${ARM}_seed${S}`.
+
+```bash
+python train.py --config-name=lewm_motion data=pusht +arm=$ARM seed=$S
+```
+
+Measurement and planning take `policy=motion_${ARM}_seed${S}/weights_epoch_10.pt` as above.
+
 ## What reproduces
 
 - `tag_episode`: backbone same-tag above 0.5 and same-content within ±0.2 early in

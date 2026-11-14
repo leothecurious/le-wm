@@ -41,6 +41,9 @@ def lejepa_forward(self, batch, stage, cfg):
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
     output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
     output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
+    if hasattr(self.model, "diff_losses"):
+        output.update(self.model.diff_losses(output, self.sigreg, cfg.loss.motion))
+        output["loss"] = output["loss"] + output["diff_loss"]
 
     losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
