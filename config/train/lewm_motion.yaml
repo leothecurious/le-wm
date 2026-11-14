@@ -1,0 +1,36 @@
+defaults:
+  - lewm
+  - _self_
+
+model:
+  _target_: motion_jepa.MotionJEPA
+  diff_size: 112
+  diff_dim: 8
+  diff_encoder:
+    _target_: stable_pretraining.backbone.utils.vit_hf
+    size: tiny
+    patch_size: 14
+    image_size: ${model.diff_size}
+    pretrained: false
+    use_mask_token: false
+  diff_projector:
+    _target_: module.MLP
+    input_dim: ${embed_dim}
+    output_dim: ${model.diff_dim}
+    hidden_dim: 2048
+    norm_fn:
+      _target_: torch.nn.BatchNorm1d
+      _partial_: true
+  diff_predictor:
+    _target_: motion_jepa.DiffPredictor
+    z_dim: ${embed_dim}
+    diff_dim: ${model.diff_dim}
+    hidden_dim: 512
+    depth: 3
+
+loss:
+  sigreg:
+    weight: 0.25
+  motion:
+    diff_sigreg_weight: 2.0
+    diff_pred_weight: 0.5
