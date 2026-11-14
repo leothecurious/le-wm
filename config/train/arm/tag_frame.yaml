@@ -1,9 +1,8 @@
 # @package _global_
 # Obsessed-encoder control arm: a fresh corner colour every frame, never predictable.
+defaults:
+  - baseline
+  - _self_
 output_model_name: tag_frame_seed${seed}
 tag:
   mode: frame
-pair:
-  every_n_steps: 100
-checkpoint:
-  every_n_steps: 5000
