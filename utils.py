@@ -65,8 +65,8 @@ class RNGStateCallback(Callback):
 
 
 class SaveCkptCallback(Callback):
-    """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs and ``weights_step_N.pt``
-    every ``step_interval`` optimizer steps (None = never), through save_pretrained."""
+    """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs and at the last one, and
+    ``weights_step_N.pt`` every ``step_interval`` optimizer steps (None = never), through save_pretrained."""
 
     def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None):
         super().__init__()
