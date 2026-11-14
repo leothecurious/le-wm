@@ -1,0 +1,98 @@
+# @package _global_
+# H-JEPA on Push-T (kevinghst/H-JEPA pusht_hjepa_l2): two levels, level 2 at stride 2.
+# Level 1 is the LeWM JEPA with H-JEPA's smaller predictor.
+subdir: hjepa_${output_model_name}
+
+data:
+  dataset:
+    # level-1 frames covering history_size + num_preds level-2 steps
+    num_steps: ${eval:'(${history_size} + ${num_preds} - 1) * ${model.upper.stride} + 1'}
+
+model:
+  _target_: hjepa.HJEPA
+  history_size: ${history_size}
+  num_preds: ${num_preds}
+  upper_lr: 1e-5
+
+  encoder:
+    _target_: stable_pretraining.backbone.utils.vit_hf
+    size: tiny
+    patch_size: 14
+    image_size: ${img_size}
+    pretrained: false
+    use_mask_token: false
+
+  predictor:
+    _target_: module.ARPredictor
+    num_frames: ${history_size}
+    input_dim: ${embed_dim}
+    hidden_dim: ${embed_dim}
+    output_dim: ${embed_dim}
+    depth: 4
+    heads: 8
+    mlp_dim: 1024
+    dim_head: 64
+    dropout: 0.1
+    emb_dropout: 0.0
+
+  action_encoder:
+    _target_: module.Embedder
+    input_dim: ???
+    emb_dim: ${embed_dim}
+
+  projector:
+    _target_: module.MLP
+    input_dim: ${embed_dim}
+    output_dim: ${embed_dim}
+    hidden_dim: 2048
+    norm_fn:
+      _target_: torch.nn.BatchNorm1d
+      _partial_: true
+
+  pred_proj:
+    _target_: module.MLP
+    input_dim: ${embed_dim}
+    output_dim: ${embed_dim}
+    hidden_dim: 2048
+    norm_fn:
+      _target_: torch.nn.BatchNorm1d
+      _partial_: true
+
+  upper:
+    _target_: hjepa.UpperLevel
+    stride: 2
+    queue_size: 4000
+    encoder:
+      _target_: hjepa.ResidualLatentMLP
+      input_dim: ${embed_dim}
+      hidden_dim: 384
+      output_dim: ${embed_dim}
+    predictor:
+      _target_: module.ARPredictor
+      num_frames: ${history_size}
+      input_dim: ${embed_dim}
+      hidden_dim: ${embed_dim}
+      output_dim: ${embed_dim}
+      depth: 6
+      heads: 16
+      mlp_dim: 2048
+      dim_head: 64
+      dropout: 0.1
+      emb_dropout: 0.0
+    pred_proj:
+      _target_: module.MLP
+      input_dim: ${embed_dim}
+      output_dim: ${embed_dim}
+      hidden_dim: 2048
+      norm_fn:
+        _target_: torch.nn.BatchNorm1d
+        _partial_: true
+    action_encoder:
+      _target_: hjepa.LatentActionEmbedder
+      input_dim: 4
+      emb_dim: ${embed_dim}
+    action_pool:
+      _target_: hjepa.SequenceEncoder
+      output_dim: 4
+      input_dim: ${embed_dim}
+      max_chunk: ${eval:'${model.upper.stride} + 1'}

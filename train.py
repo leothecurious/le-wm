@@ -10,6 +10,7 @@ import torch
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
+from hjepa import optimizer_factory
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg
 from tag import PixelTag
@@ -41,6 +42,8 @@ def lejepa_forward(self, batch, stage, cfg):
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
     output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
     output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
+    if hasattr(self.model, "upper_loss"):
+        output["loss"] = output["loss"] + self.model.upper_loss(output, self.sigreg, lambd)
 
     losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
@@ -100,10 +103,13 @@ def run(cfg):
 
     world_model = hydra.utils.instantiate(cfg.model)
 
+    optimizer = dict(cfg.optimizer)
+    if hasattr(world_model, "param_groups"):
+        optimizer = optimizer_factory(world_model, optimizer)
     optimizers = {
         'model_opt': {
             "modules": 'model',
-            "optimizer": dict(cfg.optimizer),
+            "optimizer": optimizer,
             "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
             "interval": "epoch",
         },
@@ -140,7 +146,7 @@ def run(cfg):
         OmegaConf.save(cfg, f)
 
     object_dump_callback = SaveCkptCallback(
-        run_name=cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
+        run_name=run_id or cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
         step_interval=cfg.checkpoint.every_n_steps,
     )
 
