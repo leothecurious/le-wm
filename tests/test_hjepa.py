@@ -17,6 +17,7 @@ import hjepa_planner
 import module
 import train
 from metrics import pairs
+from scripts import convert_hjepa
 
 ROOT = Path(__file__).parent.parent
 RELEASED = Path(
@@ -58,7 +59,7 @@ def to_reference(state, mask_token):
     """Names of the released ``HJEPA.jepas`` for a ``hjepa.HJEPA`` state dict."""
     out = {"jepas.0.encoder.encoder.embeddings.mask_token": mask_token}
     for key, value in state.items():
-        old = next(old + key[len(new) :] for old, new in hjepa._PREFIXES if key.startswith(new))
+        old = next(old + key[len(new) :] for old, new in convert_hjepa._PREFIXES if key.startswith(new))
         out[old] = value
     return out
 
@@ -125,7 +126,7 @@ def test_losses_match_reference(pair):
 @pytest.mark.skipif(not RELEASED.exists(), reason="released H-JEPA Push-T checkpoint not downloaded")
 def test_released_checkpoint_matches_reference():
     ours = instantiate(train_cfg("model=hjepa").model)
-    state = hjepa.load_released(RELEASED)
+    state = convert_hjepa.load_released(RELEASED)
     ours.load_state_dict(state)
     ours.eval()
     ref = reference.build_pusht_hjepa_l2().eval()
@@ -231,8 +232,13 @@ def test_pusht_composition_adds_hjepa_without_changing_lewm():
 
     cfg = train_cfg("model=hjepa", "+arm=tag_episode", "seed=1")
     assert cfg.model._target_ == "hjepa.HJEPA"
-    assert cfg.subdir == "hjepa_tag_episode_seed1"
-    assert cfg.output_model_name == "tag_episode_seed1"
+    # weights (named by output_model_name) and config.yaml (by subdir) share one folder
+    assert cfg.output_model_name == cfg.subdir == "hjepa_tag_episode_seed1"
+    assert train_cfg().output_model_name == train_cfg().subdir == "lewm"
+    for arm in ("baseline", "tag_frame"):
+        assert train_cfg("model=hjepa", f"+arm={arm}", "seed=2").subdir == f"hjepa_{arm}_seed2"
+    armless = train_cfg("model=hjepa")
+    assert armless.output_model_name == armless.subdir == "hjepa"
     assert cfg.tag.mode == "episode"
     assert cfg.data.dataset.num_steps == 7
     assert cfg.data.dataset.frameskip == 5
@@ -244,7 +250,7 @@ def test_pusht_composition_adds_hjepa_without_changing_lewm():
     groups = model.param_groups(cfg.optimizer.lr)
     assert [g["lr"] for g in groups] == [5e-5, 1e-5]
     assert sum(len(g["params"]) for g in groups) == len(list(model.parameters()))
-    optimizer = hjepa.optimizer_factory(model, dict(cfg.optimizer))(None)
+    optimizer = model.optimizer_factory(dict(cfg.optimizer))(None)
     assert [g["lr"] for g in optimizer.param_groups] == [5e-5, 1e-5]
     assert optimizer.param_groups[0]["weight_decay"] == 1e-3
 
@@ -256,6 +262,10 @@ def test_pusht_eval_composition():
     assert cfg.eval.goal_offset_steps == 25 and cfg.eval.eval_budget == 50
     protocol = eval_cfg("eval.goal_offset_steps=75", "eval.eval_budget=90")
     assert protocol.solver.eval_budget == 90
+    # the planner's horizons come from plan_config
+    assert cfg.solver.plan.receding_horizon == cfg.plan_config.receding_horizon == 2
+    assert cfg.solver.plan.level1.action_block == cfg.plan_config.action_block == 5
+    assert eval_cfg("plan_config.horizon=1").solver.plan.level1.horizon == 1
     assert compose("eval", "pusht").solver._target_ == "stable_worldmodel.solver.CEMSolver"
 
 
@@ -291,3 +301,33 @@ def test_lewm_encode_is_untouched_for_other_lengths():
     assert info["emb"].shape == (2, 3, 192)
     assert "upper_emb" not in info
     torch.testing.assert_close(info["emb"], hjepa.JEPA.encode(model, {"pixels": pixels})["emb"])
+
+
+def test_vit_checkpointing_changes_memory_not_the_maths():
+    cfg = train_cfg("model=hjepa")
+    plain = instantiate(cfg.model)
+    assert cfg.model.checkpoint_vit is False
+    assert plain.encoder.config.hidden_dropout_prob == plain.encoder.config.attention_probs_dropout_prob == 0
+    with open_dict(cfg):
+        cfg.model.checkpoint_vit = True
+    saved = instantiate(cfg.model)
+    saved.load_state_dict(plain.state_dict())
+
+    layer_calls = []
+    layer = saved.encoder.encoder.layer[0]
+    layer_forward = layer.forward
+    layer.forward = lambda *a, **k: (layer_calls.append(1), layer_forward(*a, **k))[1]
+    pixels, action = batch()
+    results = []
+    for model in (plain, saved):
+        model.train()
+        torch.manual_seed(5)
+        stub = SimpleNamespace(model=model, sigreg=module.SIGReg(**cfg.loss.sigreg.kwargs), log_dict=lambda *a, **k: None)
+        out = train.lejepa_forward(stub, {"pixels": pixels, "action": action}, "train", cfg)
+        out["loss"].backward()
+        results.append((out["loss"].detach(), {n: p.grad for n, p in model.named_parameters()}))
+    assert len(layer_calls) == 2  # forward, then again in the backward pass
+    (loss, grads), (loss_saved, grads_saved) = results
+    torch.testing.assert_close(loss_saved, loss, atol=1e-6, rtol=1e-5)
+    for name, grad in grads.items():
+        torch.testing.assert_close(grads_saved[name], grad, atol=1e-5, rtol=1e-4)

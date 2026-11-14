@@ -60,7 +60,9 @@ configuration (`pusht_hjepa_l2`) and works with the arms unchanged:
 python train.py data=pusht +arm=$ARM seed=$S model=hjepa
 ```
 
-The run is saved as `hjepa_${ARM}_seed${S}`, with the same weights and pair logging as LeWM.
+The run is saved as `hjepa_${ARM}_seed${S}` (`hjepa` without an arm), with the same weights and pair logging as LeWM.
+Level 1 sees 6 of the 7 clip frames, about 1.5 times LeWM's encoder activations; `model.checkpoint_vit=true`
+recomputes the ViT in the backward pass to save memory and leaves the maths unchanged.
 The schedule is LeWM's (10 epochs, our data loader); H-JEPA trained 9. Level 1 is the LeWM
 `JEPA` with H-JEPA's smaller predictor (4 layers, 8 heads, 1024 feed-forward instead of
 6, 16, 2048), so `measure.py` reads it unchanged. `model.levels(pixels)` returns the latents
@@ -84,7 +86,7 @@ converts into a run `eval.py` can load:
 
 ```bash
 hf download jepa-world-models/h-jepa pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt --local-dir $DIR
-python hjepa.py $DIR/pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt hjepa_released
+python -m scripts.convert_hjepa $DIR/pusht/pusht_hjepa_l2/seed42/pusht_hjepa_l2_object.ckpt hjepa_released
 python eval.py --config-name=pusht_hjepa policy=hjepa_released/weights.pt eval.goal_offset_steps=75 eval.eval_budget=90
 ```
 
