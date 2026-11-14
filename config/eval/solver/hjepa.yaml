@@ -4,11 +4,11 @@ _recursive_: false
 model: ???
 eval_budget: ${eval.eval_budget}
 plan:
-  receding_horizon: 2
+  receding_horizon: ${plan_config.receding_horizon}
   level1:
-    horizon: 2
+    horizon: ${plan_config.horizon}
     pre_decay_horizon: 2
-    action_block: 5
+    action_block: ${plan_config.action_block}
     cost_last_n: 2
     action_cost_weight: 0.2
   level2:
