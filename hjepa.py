@@ -162,7 +162,7 @@ class HJEPA(JEPA):
 
     def __init__(
         self, encoder, predictor, action_encoder, upper, projector=None, pred_proj=None,
-        history_size=3, num_preds=1, upper_lr=1e-5,
+        history_size=3, num_preds=1, upper_lr=1e-5, checkpoint_vit=False,
     ):
         super().__init__(encoder, predictor, action_encoder, projector, pred_proj)
         assert num_preds == 1, "the level-2 loss predicts one step"
@@ -171,6 +171,8 @@ class HJEPA(JEPA):
         self.keep = history_size + num_preds
         self.window = (self.keep - 1) * upper.stride + 1
         self.upper_lr = upper_lr
+        if checkpoint_vit:
+            self.encoder.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     def encode(self, info):
         if info["pixels"].size(1) != self.window:
