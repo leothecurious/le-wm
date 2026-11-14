@@ -1,7 +1,7 @@
 # @package _global_
 # Obsessed-encoder baseline: clean frames. The pair metric still stamps a tag
 # for measurement, so the untagged encoder gets a same-tag trace to compare against.
-output_model_name: baseline_seed${seed}
+output_model_name: ${oc.select:run_prefix,''}baseline_seed${seed}
 pair:
   every_n_steps: 100
 checkpoint:

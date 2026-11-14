@@ -2,6 +2,7 @@ defaults:
   - lewm
   - _self_
 
+run_prefix: motion_
 diff_dim: 8
 
 model:

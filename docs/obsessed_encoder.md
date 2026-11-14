@@ -64,10 +64,14 @@ as in their benchmark config.
 Their benchmark trains at batch size 64. Here the batch size stays at LeWM's 128, so the
 two models are compared under one training setup. Add `loader.batch_size=64` to match theirs.
 
-The arms are unchanged. The run needs its own name, or it would write over the LeWM run.
+Their "ours" runs also train a pixel decoder and pose probes on detached latents. These add
+no encoder gradient and are left out, but they count toward the global gradient-norm clip
+of 1.0 in their runs.
+
+The arms work as they are, and the run is saved as `motion_${ARM}_seed${S}`.
 
 ```bash
-python train.py --config-name=lewm_motion data=pusht +arm=$ARM seed=$S output_model_name=motion_${ARM}_seed${S}
+python train.py --config-name=lewm_motion data=pusht +arm=$ARM seed=$S
 ```
 
 Measurement and planning take `policy=motion_${ARM}_seed${S}/weights_epoch_10.pt` as above.

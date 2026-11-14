@@ -154,7 +154,26 @@ def test_motion_config_only_adds_keys_and_retargets_the_model_and_sigreg_weight(
         motion = flatten(OmegaConf.to_container(compose_train("lewm_motion", f"+arm={arm}", "seed=1")))
         assert lewm.keys() <= motion.keys()
         added = motion.keys() - lewm.keys()
-        assert all(key == "diff_dim" or key.startswith(("model.diff_", "loss.motion.")) for key in added)
+        assert all(key in ("run_prefix", "diff_dim") or key.startswith(("model.diff_", "loss.motion.")) for key in added)
         changed = {key for key in lewm if lewm[key] != motion[key]}
         assert changed == {"model._target_", "loss.sigreg.weight"}
         assert motion["loss.sigreg.weight"] == 0.25
+
+
+def test_motion_runs_are_named_apart_from_the_lewm_arms():
+    for arm in ("baseline", "tag_episode", "tag_frame"):
+        lewm = compose_train("lewm", f"+arm={arm}", "seed=1")
+        motion = compose_train("lewm_motion", f"+arm={arm}", "seed=1")
+        assert lewm.output_model_name == lewm.subdir == f"{arm}_seed1"
+        assert motion.output_model_name == motion.subdir == f"motion_{arm}_seed1"
+
+
+def test_diff_branch_is_built_as_in_the_reference_config():
+    _, model = small_model("lewm_motion")
+    assert model.diff_size == REFERENCE_DIFF_IMAGE_SIZE
+    config = model.diff_encoder.config
+    assert (config.hidden_size, config.num_hidden_layers, config.patch_size, config.image_size) == (192, 12, 14, 112)
+    linear_in, norm, _, linear_out = model.diff_projector.net
+    assert (linear_in.in_features, linear_in.out_features) == (192, 2048)
+    assert isinstance(norm, nn.BatchNorm1d) and norm.num_features == 2048
+    assert (linear_out.in_features, linear_out.out_features) == (2048, 8)
