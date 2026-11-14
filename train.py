@@ -40,7 +40,7 @@ def lejepa_forward(self, batch, stage, cfg):
     # LeWM loss
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
     output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]
+    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
     if hasattr(self.model, "diff_losses"):
         output.update(self.model.diff_losses(output, self.sigreg, cfg.loss.motion))
         output["loss"] = output["loss"] + output["diff_loss"]
