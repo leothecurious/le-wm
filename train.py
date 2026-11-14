@@ -140,9 +140,7 @@ def run(cfg):
         OmegaConf.save(cfg, f)
 
     object_dump_callback = SaveCkptCallback(
-        run_name=cfg.output_model_name,
-        cfg=cfg.model,
-        epoch_interval=1,
+        run_name=cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
         step_interval=cfg.checkpoint.every_n_steps,
     )
 
