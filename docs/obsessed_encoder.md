@@ -58,6 +58,31 @@ done
   close to the baseline.
 - Both across three seeds.
 
+## Results
+
+Final weights (`weights_epoch_10.pt`), trained at `28a4554`. The baselines are
+`pusht_seed1` and `pusht_seed2`, trained earlier with the same hyperparameters.
+Planning is 50 episodes on the frames the arm trained on, clean for the
+baselines. The state probe is the mean over the five state targets, on clean
+frames unless marked. Pair cosines are backbone reads.
+
+| Run | Planning success | same-tag | same-content | State probe R² (linear / MLP) | Effective rank |
+|---|---|---|---|---|---|
+| `baseline` seed 1 | 98% | 0.02 | 0.99 | 0.95 / 0.99 | 121 |
+| `baseline` seed 2 | 92% | 0.01 | 0.99 | 0.94 / 0.99 | 122 |
+| `tag_episode` seed 0 | 4% | 0.95 | 0.02 | 0.62 / 0.71 | 4.0 |
+| `tag_episode` seed 0, tagged frames | | | | 0.18 / −1.34 | 115 |
+| `tag_frame` seed 0 | 96% | 0.01 | 1.00 | 0.96 / 0.99 | 119 |
+
+Seed 0 reproduces both arms. In `tag_episode` the pair cosines are already at
+same-tag 0.84 and same-content 0.13 at step 25k, and planning is 2%, 6% and 10%
+at steps 5k, 15k and 25k. On clean frames its latent collapses to about four
+dimensions with 99% of the variance in the top two. The MLP probe on tagged
+frames is below the control and is the least stable number here, so read the
+linear one.
+
+Seeds 1 and 2 of both arms were still training on 14 Nov and will be added.
+
 ## Where the pair frames come from
 
 Enigma renders its pair frames fresh from the simulator. Here they are drawn from
