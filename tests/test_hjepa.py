@@ -1,5 +1,7 @@
 import importlib.util
 import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,6 +9,7 @@ import gymnasium as gym
 import hydra
 import pytest
 import stable_pretraining  # registers the eval resolver the configs use
+import stable_worldmodel as swm
 import torch
 import torch.nn.functional as F
 from hydra.utils import instantiate
@@ -255,6 +258,20 @@ def test_pusht_composition_adds_hjepa_without_changing_lewm():
     assert optimizer.param_groups[0]["weight_decay"] == 1e-3
 
 
+@pytest.mark.skipif(not RELEASED.exists(), reason="released H-JEPA Push-T checkpoint not downloaded")
+def test_converter_writes_a_run_load_pretrained_reads(tmp_path, monkeypatch):
+    env = {**os.environ, "STABLEWM_HOME": str(tmp_path), "CUDA_VISIBLE_DEVICES": ""}
+    subprocess.run(
+        [sys.executable, "-m", "scripts.convert_hjepa", str(RELEASED), "hjepa_released"],
+        cwd=ROOT, env=env, check=True, capture_output=True,
+    )
+    monkeypatch.setenv("STABLEWM_HOME", str(tmp_path))
+    model = swm.wm.utils.load_pretrained("hjepa_released/weights.pt")
+    assert type(model).__name__ == "HJEPA"
+    for name, value in convert_hjepa.load_released(RELEASED).items():
+        torch.testing.assert_close(model.state_dict()[name], value)
+
+
 def test_pusht_eval_composition():
     cfg = eval_cfg()
     assert cfg.solver._target_ == "hjepa_planner.HierarchicalSolver"
@@ -305,8 +322,10 @@ def test_lewm_encode_is_untouched_for_other_lengths():
 
 def test_vit_checkpointing_changes_memory_not_the_maths():
     cfg = train_cfg("model=hjepa")
+    assert cfg.model.checkpoint_vit is True
+    with open_dict(cfg):
+        cfg.model.checkpoint_vit = False
     plain = instantiate(cfg.model)
-    assert cfg.model.checkpoint_vit is False
     assert plain.encoder.config.hidden_dropout_prob == plain.encoder.config.attention_probs_dropout_prob == 0
     with open_dict(cfg):
         cfg.model.checkpoint_vit = True

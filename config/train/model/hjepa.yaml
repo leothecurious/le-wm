@@ -14,7 +14,8 @@ model:
   history_size: ${history_size}
   num_preds: ${num_preds}
   upper_lr: 1e-5
-  checkpoint_vit: false  # recompute the level-1 ViT in the backward pass to save memory
+  # recompute the level-1 ViT in the backward pass; same maths, and batch 128 does not fit in 16 GB without it
+  checkpoint_vit: true
 
   encoder:
     _target_: stable_pretraining.backbone.utils.vit_hf

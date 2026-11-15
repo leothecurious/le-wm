@@ -61,8 +61,9 @@ python train.py data=pusht +arm=$ARM seed=$S model=hjepa
 ```
 
 The run is saved as `hjepa_${ARM}_seed${S}` (`hjepa` without an arm), with the same weights and pair logging as LeWM.
-Level 1 sees 6 of the 7 clip frames, about 1.5 times LeWM's encoder activations; `model.checkpoint_vit=true`
-recomputes the ViT in the backward pass to save memory and leaves the maths unchanged.
+Level 1 sees 6 of the 7 clip frames, about 1.5 times LeWM's encoder activations, and batch 128 does not fit in
+16 GB. `model.checkpoint_vit` is therefore on by default: it recomputes the ViT in the backward pass,
+which leaves the maths unchanged. Set `model.checkpoint_vit=false` on a larger GPU for speed.
 The schedule is LeWM's (10 epochs, our data loader); H-JEPA trained 9. Level 1 is the LeWM
 `JEPA` with H-JEPA's smaller predictor (4 layers, 8 heads, 1024 feed-forward instead of
 6, 16, 2048), so `measure.py` reads it unchanged. `model.levels(pixels)` returns the latents
