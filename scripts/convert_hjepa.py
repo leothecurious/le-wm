@@ -94,6 +94,7 @@ def load_released(path):
 def convert(path, run_name):
     """Save a released checkpoint as ``checkpoints/<run_name>/weights.pt`` with its ``config.json``."""
     import hydra
+    import stable_pretraining  # noqa: F401, registers the eval resolver the configs use
     import stable_worldmodel as swm
     from hydra.utils import instantiate
     from omegaconf import open_dict
