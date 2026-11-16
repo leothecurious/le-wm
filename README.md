@@ -105,6 +105,11 @@ by gradient descent; our linear readout uses least squares. These are an adapted
 benchmark, not an exact numerical reproduction. Dataset/noise seeds are explicit
 project choices, not seed values reported by the paper.
 
+- Action directions use the paper's Von Mises concentration 1.3 (App. A.2); the reference code (vladisai/JEPA_SSL_NeurIPS_2022, `single.py:22`) defaults to 0.2.
+- The encoder and predictor have 17.9M parameters (26.7M with the pixel decoder), against about 1.18M in the paper.
+- Training runs 10 epochs over a fixed 100k-sequence set (about 11k steps per epoch), whereas the paper streams about 1M fresh sequences once.
+- RMSE sums the x and y errors, so absolute values differ from the paper's; compare r, the rollout RMSE over the centre-predictor RMSE.
+
 `trainer.max_epochs` sets the learning-rate schedule's full budget. A two-epoch
 run has its own warmup and decay, rather than taking the first two epochs of a
 longer schedule. Keep collection configs, checkpoint hashes, noise settings,
