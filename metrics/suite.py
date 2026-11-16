@@ -116,13 +116,16 @@ def rollout_probe(lat, max_train=None, max_test=None, seed=0, **_):
             "pooled_rmse": float(np.sqrt(errors.mean())),
         }
 
+    model = summarize(squared_error)
+    center = summarize(center_squared_error)
     return {
         "units": "coordinate side length",
         "n_train": len(tr),
         "n_test": len(te),
         "n_test_per_step": counts,
-        **summarize(squared_error),
-        "center_control": summarize(center_squared_error),
+        **model,
+        "center_control": center,
+        "r": model["mean_rmse"] / center["mean_rmse"],
     }
 
 

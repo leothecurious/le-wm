@@ -83,3 +83,4 @@ def test_first_frame_rollout_joint_position_rmse():
     np.testing.assert_allclose(result["center_control"]["rmse_per_step"], center_steps, atol=1e-6)
     np.testing.assert_allclose(result["center_control"]["mean_rmse"], center_steps.mean(), atol=1e-6)
     np.testing.assert_allclose(result["center_control"]["pooled_rmse"], np.sqrt(.1092), atol=1e-6)
+    np.testing.assert_allclose(result["r"], .05 / center_steps.mean(), atol=1e-6)
