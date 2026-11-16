@@ -11,6 +11,9 @@ with a colour of its own (``own``) and once with the colour of a partner frame
 An encoder that follows the scene reads high on same_content and near 0 on
 same_tag; one that follows the tag reads the other way round.
 
+The colour probe asks whether the colour is readable at all: it decodes the
+stamped colour from the latent and reports the error relative to chance.
+
 Pairing and cosines follow Enigma-Incorporated/The-Obsessed-Encoder@37819425
 (``common/pair_metrics.py``, ``leworldmodel/additional_files/callbacks/
 pair_analysis.py``). Their frames are freshly rendered; ours come from the
@@ -24,6 +27,7 @@ import stable_worldmodel as swm
 import torch
 import torch.nn.functional as F
 
+from metrics import probes, stimuli
 from utils import get_img_preprocessor
 
 REPS = ("backbone", "projection")
@@ -101,6 +105,37 @@ def pair_cosines(own, swap, partner):
     }
 
 
+def colour_probe(z, colors, kinds=("ridge", "mlp"), train_fraction=0.8, seed=0):
+    """Decode the stamped colour from latents ``z`` (n, d); mean of the r, g, b errors.
+
+    Colours are in 0-255. The error ratio eps compares each probe with an MLP from
+    the true colour to shuffled colours (see ``probes``): 0 is exact, 100 chance.
+    """
+    colors = colors.numpy().astype(np.float64)
+    z = z.numpy()
+    order = np.random.default_rng(seed).permutation(len(z))
+    tr, te = np.split(order, [round(train_fraction * len(z))])
+    controls = [
+        probes.control_mae(colors[tr], colors[tr, c], colors[te], colors[te, c], False, seed)
+        for c in range(3)
+    ]
+    out = {}
+    for kind in kinds:
+        res = [
+            probes.probe_errors(kind, z[tr], colors[tr, c], z[te], colors[te, c], False, controls[c], seed)
+            for c in range(3)
+        ]
+        out[kind] = {k: float(np.mean([r[k] for r in res])) for k in ("mae", "eps", "r2")}
+    return out
+
+
+def measure_colour(model, frames, tag, img_size, kinds=("ridge", "mlp"), train_fraction=0.8, seed=0):
+    """Colour probe of ``model`` on ``frames``, each stamped with a colour of its own from ``tag``."""
+    colors = torch.stack([tag.color(j) for j in range(len(frames))])
+    own = encode(model, stamp(frames, colors, tag.size), img_size)
+    return {rep: colour_probe(own[rep], colors, kinds, train_fraction, seed) for rep in REPS}
+
+
 def measure(model, frames, tag, img_size, seed=0):
     """Pair cosines of ``model`` on ``frames`` stamped by ``tag``."""
     n = len(frames)
@@ -108,6 +143,30 @@ def measure(model, frames, tag, img_size, seed=0):
     partner = cyclic_derangement(n, np.random.default_rng(seed))
     own = encode(model, stamp(frames, colors, tag.size), img_size)
     swap = encode(model, stamp(frames, colors[partner], tag.size), img_size)
+    return {rep: pair_cosines(own[rep], swap[rep], partner) for rep in REPS}
+
+
+def measure_t_position(model, n, tag, img_size, seed=0, renderer=None):
+    """Pair cosines with the destination outline as the tag and the block pose as the content.
+
+    The t_position suite of Enigma-Incorporated/The-Obsessed-Encoder@37819425
+    (``callbacks/pair_analysis.py``). ``n`` fresh renders carry a block pose and a
+    destination pose; the ``swap`` pass gives each scene its partner's destination.
+    Every frame carries the colour ``tag.color(0)`` in the corner, so the colour is
+    held fixed across the suite.
+    """
+    renderer = renderer or stimuli.StimulusRenderer()
+    rng = np.random.default_rng(seed)
+    orig, dest = stimuli.sample_orig(rng, n), stimuli.sample_dest(rng, n)
+    partner = cyclic_derangement(n, rng)
+    colors = tag.color(0)[None].expand(n, 3)
+
+    def encode_scenes(dests):
+        frames = np.stack([renderer.render(orig[j], dests[j]) for j in range(n)])
+        frames = torch.from_numpy(frames).permute(0, 3, 1, 2).contiguous()
+        return encode(model, stamp(frames, colors, tag.size), img_size)
+
+    own, swap = encode_scenes(dest), encode_scenes(dest[partner])
     return {rep: pair_cosines(own[rep], swap[rep], partner) for rep in REPS}
 
 

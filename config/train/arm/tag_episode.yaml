@@ -3,6 +3,6 @@
 defaults:
   - baseline
   - _self_
-output_model_name: tag_episode_seed${seed}
+output_model_name: ${oc.select:run_prefix,''}tag_episode_seed${seed}
 tag:
   mode: episode

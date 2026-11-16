@@ -3,6 +3,6 @@
 defaults:
   - baseline
   - _self_
-output_model_name: tag_frame_seed${seed}
+output_model_name: ${oc.select:run_prefix,''}tag_frame_seed${seed}
 tag:
   mode: frame

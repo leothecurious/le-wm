@@ -14,6 +14,7 @@ to predict the next latent and stops encoding the scene. Their LeWM is upstream
 | `baseline` | clean | reference |
 | `tag_episode` | one colour per episode | test |
 | `tag_frame` | a new colour every frame | control |
+| `randgoal` | clean, destination T sampled per episode | task-semantic key, see [RandGoal](#randgoal) |
 
 `tag_episode` and `tag_frame` differ only in `tag.mode`. The arms are config
 groups under `config/train/arm/`. Each logs the pair cosines every 100 steps
@@ -48,6 +49,33 @@ for N in 5000 10000 25000 50000 120000; do
   uv run eval.py --config-name=pusht policy=${ARM}_seed${S}/weights_step_$N.pt tag.mode=$MODE
 done
 ```
+
+## MotionJEPA
+
+`config/train/lewm_motion.yaml` adds the MotionJEPA branch
+([Karmann et al. 2026](https://arxiv.org/abs/2609.23881)) to LeWM, ported from the
+MIT-licensed [vivoTechResearch/motionjepa](https://github.com/vivoTechResearch/motionjepa)
+at `d732c4f`. A second ViT encodes the difference of consecutive frames, and an MLP
+predicts that embedding from the two image latents. The loss weights are theirs, 0.25 on
+SIGReg of the latent, 2 on SIGReg of the difference embedding and 0.5 on the difference
+prediction. The image encoder, planner and training loop are LeWM's, and planning costs
+the main latent. The difference branch is 8-dimensional on 112-pixel difference images,
+as in their benchmark config.
+
+Their benchmark trains at batch size 64. Here the batch size stays at LeWM's 128, so the
+two models are compared under one training setup. Add `loader.batch_size=64` to match theirs. Their learning-rate warmup is 0.5% of the training steps and ours is 1%, so batch 64 alone gives twice their warmup steps; at batch 128 the two warmups have the same number of steps.
+
+Their "ours" runs also train a pixel decoder and pose probes on detached latents. These add
+no encoder gradient and are left out, but they count toward the global gradient-norm clip
+of 1.0 in their runs.
+
+The arms work as they are, and the run is saved as `motion_${ARM}_seed${S}`.
+
+```bash
+uv run train.py --config-name=lewm_motion data=pusht +arm=$ARM seed=$S
+```
+
+Measurement and planning take `policy=motion_${ARM}_seed${S}/weights_epoch_10.pt` as above.
 
 ## What reproduces
 
@@ -152,9 +180,30 @@ against 0.003 to 0.004).
 
 Enigma renders its pair frames fresh from the simulator. Here they are drawn from
 the dataset, one frame from each of 256 episodes, so the encoder may have seen them
-in training.
+in training. The `t_position` suite below renders fresh, as Enigma does.
 
 Enigma's pair code (`PairAnalysisCallback`) was run on the epoch-10 weights of the
 six arm runs and both baselines. Its same-tag and same-content cosines, backbone
 and projection, differ from the dataset-frame values by at most 0.024 (0.021 on
 the backbone).
+
+## RandGoal
+
+`randgoal` trains the baseline on Enigma's scripted demos, `pusht_scripted_goal_train.lance`,
+where the destination T is sampled per episode and stored in a `goal_pose` column.
+The outline repeats within an episode, so it can serve as the predictable feature
+the corner square is elsewhere. No tag is stamped. Pair cosines use the
+`t_position` suite: 256 renders from the simulator, the tag the destination pose,
+the content the block pose, and one fixed corner colour (the tag seed's colour 0).
+
+```bash
+uv run train.py data=pusht +arm=randgoal seed=$S
+RUN=randgoal_seed${S}/weights_epoch_10.pt
+uv run measure.py --config-name=pusht policy=$RUN pairs.suite=t_position
+uv run eval.py --config-name=pusht policy=$RUN eval.dataset_name=pusht_scripted_goal_train.lance
+```
+
+On a dataset with a `goal_pose` column, `eval.py` draws each environment's destination
+where its episode had it, as the goal frame shows. Without that every environment
+would draw the default centre destination. The step checkpoints are scored the same way.
+Enigma's encoder readout (their figure 10) is not ported.

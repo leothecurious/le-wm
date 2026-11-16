@@ -1,0 +1,10 @@
+# @package _global_
+# Enigma's randgoal arm: clean frames from scripted demos whose destination T is
+# sampled per episode, so the outline is a predictable feature of the scene.
+defaults:
+  - baseline
+  - _self_
+output_model_name: randgoal_seed${seed}
+data:
+  dataset:
+    name: pusht_scripted_goal_train.lance

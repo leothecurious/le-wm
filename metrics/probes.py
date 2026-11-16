@@ -9,7 +9,7 @@ shuffled targets, so 0 is exact decoding and 100 is chance.
 
 import numpy as np
 from scipy.stats import pearsonr
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.metrics import r2_score
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
@@ -28,9 +28,11 @@ MLP = {
 
 
 def fit_probe(kind, X, y, seed=0):
-    """OLS (``linear``) or the two-layer MLP (``mlp``) on standardized X."""
+    """OLS (``linear``), ridge with leave-one-out alpha (``ridge``) or the two-layer MLP (``mlp``) on standardized X."""
     if kind == "linear":
         head = LinearRegression()
+    elif kind == "ridge":
+        head = RidgeCV(alphas=np.logspace(-2, 4, 13))
     elif kind == "mlp":
         head = MLPRegressor(**MLP, random_state=seed)
     else:
