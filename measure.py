@@ -77,6 +77,10 @@ def run(cfg: DictConfig):
         )
         assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
         training_noise_seed = int(saved.noise.seed)
+        if cfg.data.noise.mode is None:
+            cfg.data.noise.mode = saved.noise.mode
+        if cfg.data.noise.alpha is None:
+            cfg.data.noise.alpha = saved.noise.alpha
         if cfg.data.noise.seed is None:
             cfg.data.noise.seed = training_noise_seed + 2
         if cfg.data.probe.noise_seed is None:

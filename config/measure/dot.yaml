@@ -14,9 +14,9 @@ data:
   n: 10000
   seed: 0
   batch_size: 64
-  noise: # mode/alpha match training; seeds are independent across stages
-    mode: "off"
-    alpha: 0.0
+  noise: # mode/alpha null resolve to the checkpoint's; seeds are independent across stages
+    mode: null
+    alpha: null
     seed: null # resolved to training noise seed + 2
   probe:
     name: dot_probe.h5
