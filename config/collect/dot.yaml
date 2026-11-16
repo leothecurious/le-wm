@@ -7,5 +7,5 @@ size: 32 # frame side in pixels; 28 in the paper, 32 here so the decoder's doubl
 steps: 16 # actions per episode; an episode has steps + 1 frames
 max_step: 0.14 # largest action norm
 sigma: 0.05 # Gaussian blur of the dot
-concentration: 1.3 # Von Mises concentration of action directions around the episode's heading
+concentration: 0.2 # Von Mises concentration of action directions around the episode's heading; reference code value (the paper text says 1.3)
 chunk: 1000 # episodes generated at once
