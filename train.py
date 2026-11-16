@@ -137,7 +137,7 @@ def run(cfg):
             "modules": 'model',
             "optimizer": dict(cfg.optimizer),
             "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
-            "interval": "epoch",
+            "interval": "step",
         },
     }
 
