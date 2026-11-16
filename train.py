@@ -36,14 +36,16 @@ def lewm_forward(self, batch, stage, cfg):
     with torch.set_grad_enabled(torch.is_grad_enabled() and kind != "pixel"):
         output["pred_loss"] = (pred_emb - emb[:, n_preds:]).pow(2).mean()
         output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
+    latent_loss = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
 
-    if kind != "latent":
+    if kind == "latent":
+        output["loss"] = latent_loss
+    else:
         pred_pixels = self.model.decode(pred_emb).float()  # (B, T, C, h, w)
         target = batch["pixels"][:, n_preds:]
         target = F.interpolate(target.flatten(0, 1).float(), size=pred_pixels.shape[-2:], mode="area")
         output["pixel_loss"] = (pred_pixels - target.unflatten(0, pred_pixels.shape[:2])).pow(2).mean()
-        output["loss"] = output["pixel_loss"] if kind == "pixel" else output["loss"] + cfg.loss.beta * output["pixel_loss"]
+        output["loss"] = output["pixel_loss"] if kind == "pixel" else latent_loss + cfg.loss.beta * output["pixel_loss"]
 
     if stage == "validate":
         output["copy_loss"] = (emb[:, :ctx_len] - emb[:, n_preds:]).detach().pow(2).mean()
