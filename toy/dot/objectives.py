@@ -14,13 +14,9 @@ SIGREG_WEIGHT = 0.09  # LeWM's
 
 
 def compute(model, batch, objective, sigreg=None, beta=0.0, lam=0.0, shares=False):
-    """Loss terms for ``objective`` on ``batch``.
-
-    Returns a dict with ``loss`` and its terms (``pred_loss`` and ``copy_loss``
-    always; ``pixel_loss``, ``sigreg_loss`` and ``position_loss`` where the objective has
-    them). With ``shares`` the gradient-norm share of the latent and pixel terms at the
-    encoder output is added for the objectives that have both.
-    """
+    """``loss`` and its terms for ``objective``; ``pred_loss`` and ``copy_loss`` always.
+    With ``shares``, objectives with both a latent and a pixel term add each one's
+    share of the gradient norm at the encoder output."""
     frames, actions = batch["frames"], batch["actions"]
     s = model.encode(frames)  # (B, T, D)
     pred = model.predict(s[:, 0], actions)  # s~_2..s~_T

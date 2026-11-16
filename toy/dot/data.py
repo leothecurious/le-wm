@@ -40,13 +40,9 @@ def trajectory(start, actions):
 
 
 def make_chunk(split, index, noise="none", alpha=0.0, seed=0, n=CHUNK, device="cpu"):
-    """Sequences ``index`` of ``split``.
-
-    Returns frames (n, STEPS + 1, SIZE, SIZE) with noise o + alpha * Z, Z uniform
-    in [0, 1] per pixel, drawn once per sequence (``fixed``) or per frame
-    (``changing``); the noise-free frames; positions (n, STEPS + 1, 2); and
-    actions (n, STEPS, 2).
-    """
+    """Chunk ``index`` of ``split``: frames and clean frames (n, STEPS + 1, SIZE, SIZE),
+    pos (n, STEPS + 1, 2), actions (n, STEPS, 2). Noise adds alpha * U[0, 1] per pixel,
+    drawn once per sequence (``fixed``) or per frame (``changing``)."""
     assert noise in NOISES
     device = torch.device(device)
     key = np.random.SeedSequence([seed, list(SPLIT_SIZES).index(split), index])

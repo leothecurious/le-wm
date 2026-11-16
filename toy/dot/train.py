@@ -1,10 +1,9 @@
 """Train and evaluate one moving-dot run.
 
-    python -m toy.dot.train objective=grounded noise=fixed alpha=1.5 beta=1 lr=1e-3 seed=1 subdir=NAME
+    uv run -m toy.dot.train objective=grounded noise=fixed alpha=1.5 beta=1 lr=1e-3 seed=1 subdir=NAME
 
-Arguments are ``key=value`` overrides of DEFAULTS. The run directory
-$STABLEWM_HOME/checkpoints/<subdir> receives config.yaml, metrics.csv (one row
-per epoch), weights.pt and result.json with the probe RMSE and the weights' sha256.
+Arguments override DEFAULTS. $STABLEWM_HOME/checkpoints/<subdir> receives config.yaml,
+metrics.csv (one row per epoch), weights.pt and result.json (probe RMSE, weights sha256).
 """
 
 import csv

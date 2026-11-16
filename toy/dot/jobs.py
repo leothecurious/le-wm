@@ -1,15 +1,12 @@
 """Job files for the moving-dot runs, one ``<name> <command>`` line per run for scripts/gpu_lane.sh.
 
-    python -m toy.dot.jobs lr > lr.jobs        # learning rates, clean frames, seed 1
-    python -m toy.dot.jobs weights --lr sigreg=A,pixel=B > weights.jobs
-    python -m toy.dot.jobs grid --lr sigreg=A,pixel=B,grounded=C,latent_twin=D,supervised=E \\
-        --beta X --lam Y > grid.jobs
+    uv run -m toy.dot.jobs lr > lr.jobs
+    uv run -m toy.dot.jobs weights --lr sigreg=A,pixel=B > weights.jobs
+    uv run -m toy.dot.jobs grid --lr sigreg=A,pixel=B,grounded=C,latent_twin=D,supervised=E --beta X --lam Y > grid.jobs
 
-``lr`` runs all five objectives at each learning rate, with beta and lam at 1. Choose each
-objective's learning rate by validation probe RMSE (``val_rmse`` in result.json). ``weights``
-sweeps beta (grounded) and lam (latent_twin) at the learning rates of sigreg and pixel; pick
-them with scripts/pick_beta.py. ``grid`` is every objective on clean frames and on both noise
-schedules at each alpha, seeds 1 and 2, seed 1 first.
+``lr``: each objective at each learning rate, clean frames, seed 1; pick by ``val_rmse`` in
+result.json. ``weights``: beta (grounded) and lam (latent_twin); pick with scripts/pick_beta.py.
+``grid``: every objective on clean frames and both noise schedules at each alpha, seeds 1 and 2.
 """
 
 import argparse

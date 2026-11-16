@@ -3,7 +3,7 @@
 import torch
 from torch import nn
 
-from toy.dot.data import SIZE, STEPS
+from toy.dot.data import SIZE
 
 DIM = 512
 CHANNELS = 64

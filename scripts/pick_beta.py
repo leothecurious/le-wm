@@ -1,17 +1,13 @@
-"""Choose the grounding weight beta from the 2-epoch sweep runs.
+"""Pick the grounding weight from 2-epoch sweep runs.
 
-Among the runs whose predicted embedding beats copying the last context
-embedding on validation, pick the beta whose pixel term's share of the
-gradient norm at the encoder output, averaged over the last epoch, is closest
-to one half. Reports the lowest latent-term share seen in training, which must
-stay above one tenth.
+Among runs whose predicted embedding beats copy-last on validation, take the one
+whose pixel share of the encoder-output gradient norm (last-epoch mean) is closest
+to 1/2, and report the lowest latent share seen, which should stay above 1/10.
+``--weight lam`` (latent-augmented twin) swaps the two terms' roles.
 
-Usage: python scripts/pick_beta.py [--weight beta|lam] RUN_DIR [RUN_DIR ...]
-With --weight lam, for the latent-augmented twin, the roles of the two terms are swapped:
-the pick is the lam whose latent share is closest to one half and the pixel share is reported.
-Each RUN_DIR is a run's checkpoint directory ($STABLEWM_HOME/checkpoints/NAME) with its
-config.yaml. Its metrics.csv is read from RUN_DIR, or else from the run's stable-pretraining
-cache $STABLEWM_HOME/spt/NAME/runs, where scripts/run.sh puts it.
+Usage: uv run scripts/pick_beta.py [--weight beta|lam] RUN_DIR [RUN_DIR ...]
+RUN_DIR is $STABLEWM_HOME/checkpoints/NAME; metrics.csv is read from it or from
+$STABLEWM_HOME/spt/NAME/runs, where scripts/run.sh puts it.
 """
 
 import argparse
