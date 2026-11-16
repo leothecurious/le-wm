@@ -64,7 +64,8 @@ def run(cfg: DictConfig):
     tag_cfg = cfg.get("tag") or OmegaConf.create({"mode": "off", "size": 5, "seed": 0})
     random_policy = cfg.policy == "random"
     resolve_seed(
-        tag_cfg, None if random_policy else Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+        tag_cfg,
+        None if random_policy else Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent,
     )
     tag = PixelTag(**tag_cfg)
     transform = {

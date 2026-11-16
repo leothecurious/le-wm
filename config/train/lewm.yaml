@@ -47,6 +47,10 @@ pair:
   every_n_steps: null
   n: 256
 
+# also save weights_step_N.pt every this many optimizer steps (null = epochs only)
+checkpoint:
+  every_n_steps: null
+
 loss:
   kind: latent # latent | pixel | grounded, see lewm_forward in train.py
   grad_share_every: 50 # steps between gradient-share measurements (grounded only)
