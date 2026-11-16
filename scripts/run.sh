@@ -1,8 +1,8 @@
 #!/bin/bash
 # Run one entry point from a clean output directory.
 # Usage: scripts/run.sh <name> <script.py or "-m module"> [overrides...]
-# The run writes to $STABLEWM_HOME/checkpoints/<name>; the script refuses if that exists, so a rerun never mixes
-# with an old run; its metrics.csv is under $STABLEWM_HOME/spt/<name>/runs. Default storage is runs/ in the repo, with datasets under runs/datasets.
+# Output goes to $STABLEWM_HOME/checkpoints/<name>, which must not exist yet, and metrics.csv to
+# $STABLEWM_HOME/spt/<name>/runs. STABLEWM_HOME defaults to runs/ in the repo.
 set -eu
 name=$1 script=$2
 shift 2
@@ -16,4 +16,4 @@ if [ -e "$out" ]; then
   echo "refusing: $out exists" >&2
   exit 1
 fi
-exec "${PYTHON:-.venv/bin/python}" $script "$@" subdir="$name" output_model_name="$name"
+exec uv run $script "$@" subdir="$name" output_model_name="$name"
