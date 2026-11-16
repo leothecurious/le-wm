@@ -52,8 +52,8 @@ checkpoint:
   every_n_steps: null
 
 loss:
-  kind: latent # latent | pixel | grounded, see lewm_forward in train.py
-  grad_share_every: 50 # steps between gradient-share measurements (grounded only)
+  kind: latent # latent | pixel | grounded | latent_twin, see lewm_forward in train.py
+  grad_share_every: 50 # steps between gradient-share measurements (grounded and latent_twin)
   sigreg:
     weight: 0.09
     kwargs:

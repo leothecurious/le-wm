@@ -22,8 +22,10 @@ def lewm_forward(self, batch, stage, cfg):
 
     latent: LeWM's prediction error plus SIGReg. pixel: the error of the predicted
     embeddings decoded to the next frames, area-resized to the decoder's output.
-    grounded: latent plus ``loss.beta`` times pixel. Every kind logs the latent terms
-    and, on validation, the error of copying the last context embedding forward.
+    grounded: latent plus ``loss.beta`` times pixel. latent_twin: pixel plus
+    ``loss.lam`` times the prediction error against a stop-gradient target. Every
+    kind logs the latent terms and, on validation, the error of copying the last
+    context embedding forward.
     """
     kind, ctx_len, n_preds = cfg.loss.kind, cfg.history_size, cfg.num_preds
 
@@ -32,27 +34,38 @@ def lewm_forward(self, batch, stage, cfg):
     output = self.model.encode(batch)
     emb = output["emb"]  # (B, T, D)
     pred_emb = self.model.predict(emb[:, :ctx_len], output["act_emb"][:, :ctx_len])
+    target_emb = emb[:, n_preds:].detach() if kind == "latent_twin" else emb[:, n_preds:]
 
-    with torch.set_grad_enabled(torch.is_grad_enabled() and kind != "pixel"):
-        output["pred_loss"] = (pred_emb - emb[:, n_preds:]).pow(2).mean()
+    grad = torch.is_grad_enabled()
+    with torch.set_grad_enabled(grad and kind != "pixel"):
+        output["pred_loss"] = (pred_emb - target_emb).pow(2).mean()
+    with torch.set_grad_enabled(grad and kind in ("latent", "grounded")):
         output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
-    latent_loss = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
 
+    terms = {}  # the two prediction terms of hybrid objectives, as weighted in the loss
     if kind == "latent":
-        output["loss"] = latent_loss
+        output["loss"] = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
     else:
         pred_pixels = self.model.decode(pred_emb).float()  # (B, T, C, h, w)
         target = batch["pixels"][:, n_preds:]
         target = F.interpolate(target.flatten(0, 1).float(), size=pred_pixels.shape[-2:], mode="area")
         output["pixel_loss"] = (pred_pixels - target.unflatten(0, pred_pixels.shape[:2])).pow(2).mean()
-        output["loss"] = output["pixel_loss"] if kind == "pixel" else latent_loss + cfg.loss.beta * output["pixel_loss"]
+        if kind == "pixel":
+            output["loss"] = output["pixel_loss"]
+        elif kind == "grounded":
+            terms = {"latent": output["pred_loss"], "pixel": cfg.loss.beta * output["pixel_loss"]}
+            output["loss"] = sum(terms.values()) + cfg.loss.sigreg.weight * output["sigreg_loss"]
+        elif kind == "latent_twin":
+            terms = {"latent": cfg.loss.lam * output["pred_loss"], "pixel": output["pixel_loss"]}
+            output["loss"] = sum(terms.values())
+        else:
+            raise ValueError(kind)
 
     if stage == "validate":
         output["copy_loss"] = (emb[:, :ctx_len] - emb[:, n_preds:]).detach().pow(2).mean()
-    elif kind == "grounded" and self.global_step % cfg.loss.grad_share_every == 0:
+    elif terms and self.global_step % cfg.loss.grad_share_every == 0:
         # Share of the gradient norm at the embeddings held by each prediction term; SIGReg's is left out.
-        shares = grad_shares({"latent": output["pred_loss"], "pixel": cfg.loss.beta * output["pixel_loss"]}, emb)
-        for k, v in shares.items():
+        for k, v in grad_shares(terms, emb).items():
             self.log(f"{stage}/{k}_grad_share", v, on_step=False, on_epoch=True, sync_dist=True)
             self.log(f"{stage}/{k}_grad_share_min", v, on_step=False, on_epoch=True, reduce_fx="min", sync_dist=True)
 
