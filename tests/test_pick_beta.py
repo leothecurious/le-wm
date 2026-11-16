@@ -1,7 +1,6 @@
 import importlib.util
 from pathlib import Path
 
-
 spec = importlib.util.spec_from_file_location("pick_beta", Path(__file__).parents[1] / "scripts" / "pick_beta.py")
 pick_beta = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pick_beta)
@@ -10,11 +9,15 @@ HEADER = "epoch,step,fit/pixel_grad_share,fit/latent_grad_share_min,validate/pre
 
 
 def run(tmp_path, beta, rows):
-    path = tmp_path / f"beta{beta}"
-    path.mkdir()
-    (path / "config.yaml").write_text(f"loss:\n  beta: {beta}\n")
-    (path / "metrics.csv").write_text("\n".join([HEADER, *rows]) + "\n")
-    return str(path)
+    """A checkpoint directory and its stable-pretraining metrics, laid out as scripts/run.sh leaves them."""
+    name = f"beta{beta}"
+    ckpt = tmp_path / "checkpoints" / name
+    ckpt.mkdir(parents=True)
+    (ckpt / "config.yaml").write_text(f"loss:\n  beta: {beta}\n")
+    cache = tmp_path / "spt" / name / "runs" / "20261113" / "205205" / "abc"
+    cache.mkdir(parents=True)
+    (cache / "metrics.csv").write_text("\n".join([HEADER, *rows]) + "\n")
+    return str(ckpt)
 
 
 def test_pick_takes_the_share_closest_to_half_among_runs_beating_copy_last(tmp_path, capsys):

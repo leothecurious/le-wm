@@ -6,7 +6,7 @@ to 1/2, and report the lowest latent share seen, which should stay above 1/10.
 ``--weight lam`` (latent-augmented twin) swaps the two terms' roles.
 
 Usage: uv run scripts/pick_beta.py [--weight beta|lam] RUN_DIR [RUN_DIR ...]
-RUN_DIR is $STABLEWM_HOME/checkpoints/NAME; metrics.csv is read from it or from
+RUN_DIR is $STABLEWM_HOME/checkpoints/NAME; metrics.csv is read from
 $STABLEWM_HOME/spt/NAME/runs, where scripts/run.sh puts it.
 """
 
@@ -41,8 +41,6 @@ def column(values, name):
 
 
 def metrics_path(run_dir):
-    if (run_dir / "metrics.csv").exists():
-        return run_dir / "metrics.csv"
     (path,) = (run_dir.parent.parent / "spt" / run_dir.name).glob("runs/*/*/*/metrics.csv")
     return path
 
