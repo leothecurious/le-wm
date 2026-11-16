@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import numpy as np
 import torch
 from stable_pretraining import data as dt
@@ -30,6 +33,25 @@ def get_column_normalizer(dataset, source: str, target: str):
     mean = data.mean(0, keepdim=True).clone()
     std = data.std(0, keepdim=True).clone()
     return dt.transforms.WrapTorchTransform(ZScoreNormalizer(mean, std), source=source, target=target)
+
+
+class ResumeCkptCallback(Callback):
+    """Replaces the full Lightning checkpoint at ``path`` after every epoch.
+
+    The Manager's own ``last.ckpt`` lives in a timestamped run directory, which a
+    rerun of the same command never finds. This one has a fixed path to resume from.
+    """
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = Path(path)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        trainer.save_checkpoint(tmp)
+        if trainer.is_global_zero:
+            os.replace(tmp, self.path)
+
 
 class RNGStateCallback(Callback):
     """Checkpoint the shuffle generator and the global torch RNGs, which

@@ -153,4 +153,3 @@ def test_null_seed_without_a_saved_tag_is_zero(tmp_path):
 def test_configs_default_to_the_string_off(path, key):
     # unquoted YAML 1.1 `off` loads as False
     assert OmegaConf.select(OmegaConf.load(path), key) == "off"
-

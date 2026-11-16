@@ -7,16 +7,28 @@ import stable_worldmodel as swm
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from metrics import data, pairs, suite
+from metrics import data, pairs, predictor, suite
 from metrics.latents import Latents, extract
 from tag import PixelTag, resolve_seed
 
 
 def measure_pairs(cfg, model):
-    """Pair cosines on dataset frames stamped with the tag's colours."""
+    """Pair cosines of the ``pairs.suite``: the tag's colours on dataset frames, or t_position."""
+    if cfg.pairs.suite == "t_position":
+        tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
+        return pairs.measure_t_position(model, cfg.pairs.n, tag, cfg.data.img_size)
     frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.get("cache_dir"))
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure(model, frames, tag, cfg.data.img_size, cfg.data.seed)
+
+
+def measure_colour(cfg, model):
+    """Colour probe on dataset frames, each stamped with its own colour from the tag's hash."""
+    frames = pairs.load_frames(cfg.data.name, cfg.colour.n, cfg.data.seed, cfg.get("cache_dir"))
+    tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
+    return pairs.measure_colour(
+        model, frames, tag, cfg.data.img_size, cfg.colour.kinds, cfg.colour.train_fraction, cfg.data.seed
+    )
 
 
 def get_latents(cfg, model, latents_path):
@@ -52,16 +64,24 @@ def run(cfg: DictConfig):
     model.requires_grad_(False)
 
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    resolve_seed(cfg.data.tag, Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent)
+    run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent
+    resolve_seed(cfg.data.tag, run_path)
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
 
     start_time = time.time()
-    lat = get_latents(cfg, model, latents_path)
-    metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
+    metrics = {}
+    if cfg.metrics or cfg.get("pred_copy"):
+        lat = get_latents(cfg, model, latents_path)
+    if cfg.metrics:
+        metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
     if cfg.get("pairs"):
         metrics["pairs"] = measure_pairs(cfg, model)
+    if cfg.get("pred_copy"):
+        metrics["pred_copy"] = predictor.measure(model, lat, **cfg.pred_copy)
+    if cfg.get("colour"):
+        metrics["colour_probe"] = measure_colour(cfg, model)
     end_time = time.time()
 
     print(json.dumps(metrics, indent=1))

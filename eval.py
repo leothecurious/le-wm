@@ -29,8 +29,13 @@ def img_transform(cfg):
     return transform
 
 
+def episode_col(dataset):
+    # Lance lists only the data keys in column_names, so test for the rarer name
+    return "ep_idx" if "ep_idx" in dataset.column_names else "episode_idx"
+
+
 def get_episodes_length(dataset, episodes):
-    col_name = "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
+    col_name = episode_col(dataset)
 
     episode_idx = dataset.get_col_data(col_name)
     step_idx = dataset.get_col_data("step_idx")
@@ -42,12 +47,36 @@ def get_episodes_length(dataset, episodes):
 
 def get_dataset(cfg, dataset_name):
     dataset_path = Path(cfg.cache_dir or swm.data.utils.get_cache_dir())
+    if dataset_name.endswith(".lance"):
+        return swm.data.load_dataset(dataset_name, cache_dir=cfg.cache_dir)
     dataset = swm.data.HDF5Dataset(
         dataset_name,
         keys_to_cache=cfg.dataset.keys_to_cache,
         cache_dir=dataset_path,
     )
     return dataset
+
+
+def align_destinations(world, dataset, rows):
+    """Draw each env's destination T where its dataset episode had it.
+
+    Port of ``_align_destinations`` in Enigma-Incorporated/The-Obsessed-Encoder@37819425
+    (``leworldmodel/additional_files/callbacks/goal_eval.py``). Reset never samples
+    the goal variation, so every env would draw the default centre destination
+    while the goal frame it plans against shows the episode's own. A dataset with a
+    fixed destination has no ``goal_pose`` column and already agrees with the env
+    default. Returns whether the destinations were aligned.
+    """
+    try:
+        poses = np.asarray(dataset.get_col_data("goal_pose"))[rows]
+    except Exception:
+        return False
+    for env, pose in zip(world.envs.envs, poses):
+        goal = env.unwrapped.variation_space["goal"]
+        goal["position"].set_init_value(np.asarray(pose[:2], dtype=np.float64))
+        goal["angle"].set_init_value(float(pose[2]))
+    return True
+
 
 @hydra.main(version_base=None, config_path="./config/eval", config_name="pusht")
 def run(cfg: DictConfig):
@@ -75,7 +104,7 @@ def run(cfg: DictConfig):
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
     stats_dataset = dataset  # get_dataset(cfg, cfg.dataset.stats)
-    col_name = "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
+    col_name = episode_col(dataset)
     ep_indices, _ = np.unique(stats_dataset.get_col_data(col_name), return_index=True)
 
     process = {}
@@ -120,7 +149,6 @@ def run(cfg: DictConfig):
     max_start_idx = episode_len - cfg.eval.goal_offset_steps - 1
     max_start_idx_dict = {ep_id: max_start_idx[i] for i, ep_id in enumerate(ep_indices)}
     # Map each dataset row’s episode_idx to its max_start_idx
-    col_name = "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
     max_start_per_row = np.array(
         [max_start_idx_dict[ep_id] for ep_id in dataset.get_col_data(col_name)]
     )
@@ -140,13 +168,15 @@ def run(cfg: DictConfig):
 
     print(random_episode_indices)
 
-    eval_episodes = dataset.get_row_data(random_episode_indices)[col_name]
-    eval_start_idx = dataset.get_row_data(random_episode_indices)["step_idx"]
+    # get_row_data leaves out the index columns on Lance
+    eval_episodes = np.asarray(dataset.get_col_data(col_name))[random_episode_indices]
+    eval_start_idx = np.asarray(dataset.get_col_data("step_idx"))[random_episode_indices]
 
     if len(eval_episodes) < cfg.eval.num_eval:
         raise ValueError("Not enough episodes with sufficient length for evaluation.")
 
     world.set_policy(policy)
+    print("destinations aligned:", align_destinations(world, dataset, random_episode_indices))
 
     results_path.mkdir(parents=True, exist_ok=True)
 

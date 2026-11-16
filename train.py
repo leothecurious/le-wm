@@ -13,7 +13,7 @@ from omegaconf import OmegaConf, open_dict
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg
 from tag import PixelTag
-from utils import get_column_normalizer, get_img_preprocessor, RNGStateCallback, SaveCkptCallback
+from utils import get_column_normalizer, get_img_preprocessor, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback
 
 
 def lejepa_forward(self, batch, stage, cfg):
@@ -152,20 +152,27 @@ def run(cfg):
         step_interval=cfg.checkpoint.every_n_steps,
     )
 
+    ckpt_path = run_dir / f"{cfg.output_model_name}_weights.ckpt"
+
     trainer = pl.Trainer(
         **cfg.trainer,
-        callbacks=[object_dump_callback, RNGStateCallback(train), *pair_callbacks],
+        callbacks=[
+            object_dump_callback,
+            RNGStateCallback(train),
+            ResumeCkptCallback(ckpt_path),
+            *pair_callbacks,
+        ],
         num_sanity_val_steps=1,
         logger=logger,
         enable_checkpointing=True,
     )
 
-    ckpt_path = run_dir / f"{cfg.output_model_name}_weights.ckpt"
     manager = spt.Manager(
         trainer=trainer,
         module=world_model,
         data=data_module,
         ckpt_path=cfg.get("resume_from") or (ckpt_path if ckpt_path.exists() else None),
+        weights_only=False,
         seed=cfg.seed,
     )
 
