@@ -58,7 +58,7 @@ def validate(model, cfg, objective, sigreg, device):
             for k, v in compute(model, batch, objective, sigreg, cfg.beta, cfg.lam).items():
                 sums[k] = sums.get(k, 0.0) + float(v.detach())
             n += 1
-    return {f"val/{k}": v / n for k, v in sums.items()}
+    return {f"validate/{k}": v / n for k, v in sums.items()}
 
 
 def write_csv(path, rows):
@@ -101,11 +101,12 @@ def run(cfg):
                     sums[k] = sums.get(k, 0.0) + float(v.detach())
             n += 1
             step += 1
-        row = {"epoch": epoch, "step": step, **{f"train/{k}": v / n for k, v in sums.items()}}
+        # Stage prefixes match train.py's Lightning logs, so scripts/pick_beta.py reads both.
+        row = {"epoch": epoch, "step": step, **{f"fit/{k}": v / n for k, v in sums.items()}}
         for k, v in shares.items():
             if v:
-                row[f"train/{k}_grad_share"] = sum(v) / len(v)
-                row[f"train/{k}_grad_share_min"] = min(v)
+                row[f"fit/{k}_grad_share"] = sum(v) / len(v)
+                row[f"fit/{k}_grad_share_min"] = min(v)
         model.eval()
         rows.append({**row, **validate(model, cfg, cfg.objective, sigreg, device)})
         write_csv(out / "metrics.csv", rows)

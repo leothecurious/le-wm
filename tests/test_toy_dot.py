@@ -57,6 +57,6 @@ def test_a_run_writes_its_artifacts(objective, tmp_path, monkeypatch):
     run = tmp_path / "checkpoints" / "smoke"
     result = json.loads((run / "result.json").read_text())
     header = (run / "metrics.csv").read_text().splitlines()[0].split(",")
-    assert {"val/pred_loss", "val/copy_loss"} <= set(header)
-    assert ("train/latent_grad_share_min" in header) == (objective in ("grounded", "latent_twin"))
+    assert {"validate/pred_loss", "validate/copy_loss"} <= set(header)
+    assert ("fit/latent_grad_share_min" in header) == (objective in ("grounded", "latent_twin"))
     assert math.isfinite(result["rmse"]) and len(result["weights_sha256"]) == 64

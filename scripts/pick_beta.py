@@ -35,23 +35,9 @@ def epoch_metrics(path):
     return epochs
 
 
-PREFIXES = {"fit": ("fit", "train"), "validate": ("validate", "val")}  # Lightning stage names, or the toy's
-
-
-def column(values, stage, name):
-    for prefix in PREFIXES[stage]:
-        for key in (f"{prefix}/{name}", f"{prefix}/{name}_epoch"):
-            if key in values:
-                return values[key]
-    raise KeyError(f"{stage}/{name} is not in the metrics CSV")
-
-
-def has(values, stage, name):
-    try:
-        column(values, stage, name)
-    except KeyError:
-        return False
-    return True
+def column(values, name):
+    """``name``, or the epoch aggregate Lightning logs as ``name_epoch``; None if neither."""
+    return values.get(name, values.get(f"{name}_epoch"))
 
 
 def metrics_path(run_dir):
@@ -70,12 +56,12 @@ def summarize(run_dir, weight):
     weighted, other = ("pixel", "latent") if weight == "beta" else ("latent", "pixel")
     return {
         "weight": value,
-        "share": column(last, "fit", f"{weighted}_grad_share"),
+        "share": column(last, f"fit/{weighted}_grad_share"),
         "other_share_min": min(
-            column(v, "fit", f"{other}_grad_share_min") for v in epochs.values() if has(v, "fit", f"{other}_grad_share_min")
+            v for v in (column(e, f"fit/{other}_grad_share_min") for e in epochs.values()) if v is not None
         ),
-        "pred": column(last, "validate", "pred_loss"),
-        "copy": column(last, "validate", "copy_loss"),
+        "pred": column(last, "validate/pred_loss"),
+        "copy": column(last, "validate/copy_loss"),
     }
 
 
