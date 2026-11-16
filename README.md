@@ -51,6 +51,14 @@ export STABLEWM_HOME=/path/to/your/storage
 
 Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `$STABLEWM_HOME/pusht_expert_train.h5`.
 
+The moving-dot benchmark, after Sobal et al. (2022), is recorded locally and trained like any other dataset. Its noise is blended in at load time (`noise.py`), fixed per episode or redrawn every frame:
+
+```bash
+uv run collect_dot.py
+uv run train.py --config-name=lewm_grounded data=dot noise.mode=episode noise.alpha=1.5
+uv run measure.py --config-name=dot policy=dot_grounded_episode1.5_seed3072/weights_epoch_10.pt data.noise.mode=episode data.noise.alpha=1.5
+```
+
 ## Training
 
 `jepa.py` contains the PyTorch implementation of LeWM. Training is configured via [Hydra](https://hydra.cc/) config files under `config/train/`.

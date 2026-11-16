@@ -3,7 +3,7 @@ _target_: jepa.JEPA
 encoder:
   _target_: stable_pretraining.backbone.utils.vit_hf
   size: tiny
-  patch_size: 14
+  patch_size: ${patch_size}
   image_size: ${img_size}
   pretrained: false
   use_mask_token: false

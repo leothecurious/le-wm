@@ -1,0 +1,41 @@
+defaults:
+  - launcher: local
+  - _self_
+
+policy: ??? # checkpoint, resolved like eval.py
+latents_path: null # reuse saved latents instead of encoding
+
+data:
+  name: dot.h5
+  frameskip: 1
+  img_size: 32
+  sampler: episodes # episodes | random_clips
+  start: episode_start # episode_start | any_start (episodes sampler)
+  n: 2000
+  seed: 0
+  train_fraction: 0.8
+  batch_size: 64
+  noise: # the run's noise, mode off | episode | frame (see noise.py)
+    mode: "off"
+    alpha: 0.0
+    seed: null # the checkpoint's training noise seed
+  num_workers: 4
+  columns: # expected widths of the target columns
+    - {column: state, dim: 2} # dot x, y
+
+windows:
+  frames: 17 # a whole episode
+  min_frames: 4
+  precision: fp32 # fp32 | bf16 | fp16
+
+# column[:, index]; angle = periodic value
+targets:
+  - {name: dot_x, column: state, index: 0}
+  - {name: dot_y, column: state, index: 1}
+
+metrics:
+  - {name: state_probe, groups: [state], kinds: [linear, mlp], windows: [1]}
+  - {name: rank_spectrum, frame: null} # every valid frame; frame 0 is the episode start
+
+output:
+  filename: dot_metrics.txt
