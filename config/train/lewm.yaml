@@ -42,6 +42,12 @@ tag:
   size: 5
   seed: ${seed}
 
+# uniform noise blended over every frame, mode off | episode | frame (see noise.py)
+noise:
+  mode: "off"
+  alpha: 0.0
+  seed: ${seed}
+
 # pair cosines of n tagged frames, logged every this many steps (null = off)
 pair:
   every_n_steps: null

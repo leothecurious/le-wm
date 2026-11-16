@@ -45,7 +45,8 @@ def get_latents(cfg, model, latents_path):
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
-    cfg = OmegaConf.merge({"data": {"tag": {"mode": "off", "size": 5, "seed": None}}}, cfg)
+    off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
+    cfg = OmegaConf.merge({"data": off}, cfg)
     model = swm.wm.utils.load_pretrained(cfg.policy)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
@@ -54,6 +55,7 @@ def run(cfg: DictConfig):
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
     run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent
     resolve_seed(cfg.data.tag, run_path)
+    resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
