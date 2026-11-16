@@ -35,6 +35,17 @@ class SIGReg(torch.nn.Module):
         statistic = (err @ self.weights) * proj.size(-2)
         return statistic.mean() # average over projections and time
     
+def grad_shares(terms, emb):
+    """Share of the gradient norm at ``emb`` held by each loss term in ``terms``
+    (name -> scalar loss, already scaled by its weight). The shares sum to one."""
+    norms = {}
+    for name, term in terms.items():
+        (grad,) = torch.autograd.grad(term, emb, retain_graph=True)
+        norms[name] = grad.detach().float().norm()
+    total = sum(norms.values()).clamp_min(torch.finfo(torch.float32).tiny)
+    return {name: norm / total for name, norm in norms.items()}
+
+
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""
 

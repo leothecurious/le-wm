@@ -7,7 +7,7 @@ terms of the same scale as the Push-T objectives.
 import torch
 import torch.nn.functional as F
 
-from grounding import grad_shares
+from module import grad_shares
 
 OBJECTIVES = ("sigreg", "pixel", "grounded", "latent_twin", "supervised")
 SIGREG_WEIGHT = 0.09  # LeWM's

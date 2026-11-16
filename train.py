@@ -7,123 +7,56 @@ import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
+import torch.nn.functional as F
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from grounding import copy_last_loss, grad_shares, next_frame_targets
 from metrics.pairs import PairCallback, load_frames
-from module import SIGReg
+from module import SIGReg, grad_shares
 from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor, RNGStateCallback, SaveCkptCallback
 
 
-def lejepa_forward(self, batch, stage, cfg):
-    """encode observations, predict next states, compute losses."""
+def lewm_forward(self, batch, stage, cfg):
+    """Encode, predict the next embeddings and compute the ``loss.kind`` objective.
 
-    ctx_len = cfg.history_size
-    n_preds = cfg.num_preds
-    lambd = cfg.loss.sigreg.weight
+    latent: LeWM's prediction error plus SIGReg. pixel: the error of the predicted
+    embeddings decoded to the next frames, area-resized to the decoder's output.
+    grounded: latent plus ``loss.beta`` times pixel. Every kind logs the latent terms
+    and, on validation, the error of copying the last context embedding forward.
+    """
+    kind, ctx_len, n_preds = cfg.loss.kind, cfg.history_size, cfg.num_preds
 
     # Replace NaN values with 0 (occurs at sequence boundaries)
     batch["action"] = torch.nan_to_num(batch["action"], 0.0)
-
     output = self.model.encode(batch)
-
     emb = output["emb"]  # (B, T, D)
-    act_emb = output["act_emb"]
+    pred_emb = self.model.predict(emb[:, :ctx_len], output["act_emb"][:, :ctx_len])
 
-    ctx_emb = emb[:, :ctx_len]
-    ctx_act = act_emb[:, : ctx_len]
-
-    tgt_emb = emb[:, n_preds:] # label
-    pred_emb = self.model.predict(ctx_emb, ctx_act) # pred
-
-    # LeWM loss
-    output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-    output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
-
-    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
-    self.log_dict(losses_dict, on_step=True, sync_dist=True)
-    return output
-
-def pixel_term(self, batch, pred_emb, cfg):
-    """Mean squared error between the decoded predicted embeddings and the next
-    frames, which are the preprocessed frames area-resized to the decoder's
-    output size."""
-    pred_pixels = self.model.decode(pred_emb)  # (B, T, C, h, w)
-    target = next_frame_targets(batch["pixels"], cfg.num_preds, pred_pixels.shape[-2:])
-    return (pred_pixels.float() - target).pow(2).mean()
-
-
-def log_latent_terms(self, output, emb, pred_emb, stage, cfg):
-    """Latent prediction error, SIGReg and, on validation, the error of copying
-    the last context embedding forward."""
-    with torch.no_grad():
-        output["pred_loss"] = (pred_emb - emb[:, cfg.num_preds:]).pow(2).mean()
+    with torch.set_grad_enabled(torch.is_grad_enabled() and kind != "pixel"):
+        output["pred_loss"] = (pred_emb - emb[:, n_preds:]).pow(2).mean()
         output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
-        if stage == "validate":
-            output["copy_loss"] = copy_last_loss(emb, cfg.history_size, cfg.num_preds)
+    output["loss"] = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
 
-
-def log_losses(self, output, stage):
-    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
-    self.log_dict(losses_dict, on_step=True, sync_dist=True)
-
-
-def pixel_forward(self, batch, stage, cfg):
-    """Encode observations, predict next states and decode them to the next
-    frames; the loss is the pixel error alone.
-
-    The latent prediction error and SIGReg are logged for comparison with the
-    latent objective but take no part in the loss.
-    """
-
-    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
-    output = self.model.encode(batch)
-    emb = output["emb"]  # (B, T, D)
-    pred_emb = self.model.predict(emb[:, : cfg.history_size], output["act_emb"][:, : cfg.history_size])
-
-    output["pixel_loss"] = pixel_term(self, batch, pred_emb, cfg)
-    output["loss"] = output["pixel_loss"]
-    log_latent_terms(self, output, emb, pred_emb, stage, cfg)
-    log_losses(self, output, stage)
-    return output
-
-
-def grounded_forward(self, batch, stage, cfg):
-    """LeWM's loss plus ``loss.beta`` times the pixel error of the decoded predicted embeddings.
-
-    Every ``loss.grad_share_every`` training steps the share of the gradient
-    norm at the embeddings held by each of the two prediction terms is logged,
-    as the epoch mean and the epoch minimum. SIGReg's gradient is not part of the shares.
-    """
-
-    beta = cfg.loss.beta
-    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
-    output = self.model.encode(batch)
-    emb = output["emb"]  # (B, T, D)
-    pred_emb = self.model.predict(emb[:, : cfg.history_size], output["act_emb"][:, : cfg.history_size])
-
-    pred_loss = (pred_emb - emb[:, cfg.num_preds:]).pow(2).mean()
-    sigreg_loss = self.sigreg(emb.transpose(0, 1))
-    pixel_loss = pixel_term(self, batch, pred_emb, cfg)
-    output["pred_loss"], output["sigreg_loss"], output["pixel_loss"] = pred_loss, sigreg_loss, pixel_loss
-    output["loss"] = pred_loss + cfg.loss.sigreg.weight * sigreg_loss + beta * pixel_loss
+    if kind != "latent":
+        pred_pixels = self.model.decode(pred_emb).float()  # (B, T, C, h, w)
+        target = batch["pixels"][:, n_preds:]
+        target = F.interpolate(target.flatten(0, 1).float(), size=pred_pixels.shape[-2:], mode="area")
+        output["pixel_loss"] = (pred_pixels - target.unflatten(0, pred_pixels.shape[:2])).pow(2).mean()
+        output["loss"] = output["pixel_loss"] if kind == "pixel" else output["loss"] + cfg.loss.beta * output["pixel_loss"]
 
     if stage == "validate":
-        output["copy_loss"] = copy_last_loss(emb.detach(), cfg.history_size, cfg.num_preds)
-    elif self.global_step % cfg.loss.grad_share_every == 0:
-        shares = grad_shares({"latent": pred_loss, "pixel": beta * pixel_loss}, emb)
-        self.log_dict({f"{stage}/{k}_grad_share": v for k, v in shares.items()},
-                      on_step=False, on_epoch=True, sync_dist=True)
+        output["copy_loss"] = (emb[:, :ctx_len] - emb[:, n_preds:]).detach().pow(2).mean()
+    elif kind == "grounded" and self.global_step % cfg.loss.grad_share_every == 0:
+        # Share of the gradient norm at the embeddings held by each prediction term; SIGReg's is left out.
+        shares = grad_shares({"latent": output["pred_loss"], "pixel": cfg.loss.beta * output["pixel_loss"]}, emb)
         for k, v in shares.items():
+            self.log(f"{stage}/{k}_grad_share", v, on_step=False, on_epoch=True, sync_dist=True)
             self.log(f"{stage}/{k}_grad_share_min", v, on_step=False, on_epoch=True, reduce_fx="min", sync_dist=True)
-    log_losses(self, output, stage)
+
+    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
+    self.log_dict(losses_dict, on_step=True, sync_dist=True)
     return output
-
-
-FORWARD = {"latent": lejepa_forward, "pixel": pixel_forward, "grounded": grounded_forward}
 
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
@@ -197,7 +130,7 @@ def run(cfg):
     world_model = spt.Module(
         model = world_model,
         sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
-        forward=partial(FORWARD[cfg.loss.kind], cfg=cfg),
+        forward=partial(lewm_forward, cfg=cfg),
         optim=optimizers,
     )
 
