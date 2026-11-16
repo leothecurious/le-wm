@@ -1,0 +1,7 @@
+defaults:
+  - dot
+  - _self_
+
+name: dot_test.h5
+seed: 2
+episodes: 10000

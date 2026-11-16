@@ -1,0 +1,7 @@
+defaults:
+  - dot
+  - _self_
+
+name: dot_probe.h5
+seed: 1
+episodes: 10000

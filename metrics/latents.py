@@ -17,6 +17,7 @@ class Latents:
     target   (N, T, M)  probe targets in dataset units
     episode  (N,)       dataset episode of each window
     train    (N,)       probe-train side of the episode split
+    predicted_z (N, T, D) optional open-loop rollout, including frame zero
     """
 
     z: torch.Tensor
@@ -28,6 +29,7 @@ class Latents:
     target_names: list
     target_angle: list
     target_group: list
+    predicted_z: torch.Tensor | None = None
 
     def save(self, path):
         torch.save(vars(self), path)
@@ -38,14 +40,26 @@ class Latents:
 
 
 @torch.inference_mode()
-def extract(model, loader, precision="fp32"):
-    """Encode every frame of each window. Returns z, action and valid."""
+def extract(model, loader, precision="fp32", rollout=False, history_size=1):
+    """Encode each frame, optionally also roll out from only the first frame."""
+    if rollout:
+        assert history_size == 1, "rollout evaluation uses the first-frame protocol"
     device = next(model.parameters()).device
     dtype = PRECISION[precision]
     out = {"z": [], "action": [], "valid": []}
+    if rollout:
+        out["predicted_z"] = []
     for batch in loader:
         pixels = batch["pixels"].to(device, non_blocking=True)
         with torch.autocast(device.type, dtype=dtype, enabled=dtype is not None):
+            if rollout:
+                prediction = model.rollout(
+                    {"pixels": pixels[:, None, :history_size]},
+                    batch["action"][:, None, :-1].to(device, non_blocking=True),
+                    history_size=history_size,
+                )["predicted_emb"][:, 0]
+                assert prediction.shape[:2] == pixels.shape[:2]
+                out["predicted_z"].append(prediction.float().cpu())
             z = model.encode({"pixels": pixels})["emb"]
         out["z"].append(z.float().cpu())
         out["action"].append(batch["action"])

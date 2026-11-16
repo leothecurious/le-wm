@@ -5,7 +5,7 @@ from pathlib import Path
 import hydra
 import stable_worldmodel as swm
 import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from metrics import data, pairs, predictor, suite
 from metrics.latents import Latents, extract
@@ -40,7 +40,10 @@ def get_latents(cfg, model, latents_path):
         cfg.data, cfg.targets, w.frames, w.min_frames, cfg.get("cache_dir")
     )
     names, angle, group = data.target_meta(cfg.targets)
-    out = extract(model, loader, w.precision)
+    out = extract(
+        model, loader, w.precision,
+        rollout=w.get("rollout", False), history_size=w.get("history_size", 1),
+    )
     lat = Latents(
         **out,
         target=torch.from_numpy(target),
@@ -67,7 +70,31 @@ def run(cfg: DictConfig):
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
     run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent
     resolve_seed(cfg.data.tag, run_path)
-    resolve_seed(cfg.data.noise, run_path, key="noise")
+    if cfg.data.get("probe") is not None:
+        saved = OmegaConf.load(run_path / "config.yaml")
+        assert saved.history_size == cfg.windows.history_size == 1, (
+            "the dot rollout protocol requires a model trained with history_size=1"
+        )
+        assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
+        training_noise_seed = int(saved.noise.seed)
+        if cfg.data.noise.seed is None:
+            cfg.data.noise.seed = training_noise_seed + 2
+        if cfg.data.probe.noise_seed is None:
+            cfg.data.probe.noise_seed = training_noise_seed + 1
+        if cfg.data.noise.mode != "off":
+            assert training_noise_seed not in (cfg.data.noise.seed, cfg.data.probe.noise_seed), (
+                "dot probe fitting and test must use noise seeds distinct from encoder training"
+            )
+        datasets_dir = swm.data.utils.get_cache_dir(cfg.get("cache_dir"), sub_folder="datasets")
+        training_path = Path(datasets_dir, saved.data.dataset.name)
+        for name in (cfg.data.name, cfg.data.probe.name):
+            assert Path(datasets_dir, name).resolve() != Path(training_path).resolve(), (
+                "dot probe fitting and test require datasets separate from encoder training"
+            )
+        with open_dict(cfg):
+            cfg.data.action_normalizer = saved.data.action_normalizer
+    else:
+        resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"

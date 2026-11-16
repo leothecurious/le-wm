@@ -78,6 +78,54 @@ def state_probe(
     return out
 
 
+def rollout_probe(lat, max_train=None, max_test=None, seed=0, **_):
+    """Joint linear position readout shared across all open-loop timesteps.
+
+    Dot coordinates are fractions of the image side length. The paper-style
+    summary averages timestep Euclidean RMSEs, rather than pooling frames.
+    """
+    if lat.predicted_z is None:
+        raise ValueError("rollout_probe requires predicted_z from rollout extraction")
+    if any(lat.target_names.count(name) != 1 for name in ("dot_x", "dot_y")):
+        raise ValueError("rollout_probe requires unique dot_x and dot_y targets")
+    columns = [lat.target_names.index(name) for name in ("dot_x", "dot_y")]
+    if any(lat.target_angle[j] for j in columns):
+        raise ValueError("dot_x and dot_y must be non-angular coordinates")
+    if lat.predicted_z.shape[:2] != lat.valid.shape:
+        raise ValueError("predicted_z must align with the valid frame mask")
+    n, t, side = _frames(lat)
+    tr, te = _split(side, max_train, max_test, seed)
+    if not len(tr) or not len(te):
+        raise ValueError("rollout_probe requires valid train and test frames")
+    X = lat.predicted_z.numpy()[n, t]
+    y = lat.target.numpy()[n, t][:, columns]
+    probe = probes.fit_probe("linear", X[tr], y[tr], seed)
+    squared_error = ((probe.predict(X[te]) - y[te]) ** 2).sum(axis=1)
+    center_squared_error = ((0.5 - y[te]) ** 2).sum(axis=1)
+    test_t = t[te]
+    counts = [int((test_t == step).sum()) for step in range(lat.valid.shape[1])]
+
+    def summarize(errors):
+        per_step = [
+            float(np.sqrt(errors[test_t == step].mean())) if count else None
+            for step, count in enumerate(counts)
+        ]
+        return {
+            "rmse_per_step": per_step,
+            "mean_rmse": float(np.mean([value for value in per_step if value is not None])),
+            "pooled_rmse": float(np.sqrt(errors.mean())),
+        }
+
+    return {
+        "units": "coordinate side length",
+        "n_train": len(tr),
+        "n_test": len(te),
+        "n_test_per_step": counts,
+        **summarize(squared_error),
+        "center_control": summarize(center_squared_error),
+    }
+
+
 def reverse_probe(
     lat, groups=("state",), kinds=("linear",), max_train=20000, max_test=5000, seed=0, **_,
 ):
@@ -125,7 +173,7 @@ def rank_spectrum(lat, frame=None, top=32, **_):
 
 METRICS = {
     f.__name__: f
-    for f in (state_probe, reverse_probe, rank_spectrum)
+    for f in (state_probe, rollout_probe, reverse_probe, rank_spectrum)
 }
 
 

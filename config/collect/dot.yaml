@@ -1,6 +1,6 @@
 # Moving-dot sequences after Sobal et al. (2022, arXiv 2211.10831), App. A.2.
 # Lengths are in units of the square's side.
-name: dot.h5 # written to $STABLEWM_HOME/datasets/
+name: dot_train.h5 # written to $STABLEWM_HOME/datasets/
 episodes: 10000
 seed: 0
 size: 32 # frame side in pixels; 28 in the paper, 32 here so the decoder's doublings reach it

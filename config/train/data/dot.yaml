@@ -5,12 +5,14 @@ data:
   dataset:
     num_steps: ${eval:'${num_preds} + ${history_size}'}
     frameskip: 1
-    name: dot.h5
+    name: dot_train.h5
     keys_to_load:
       - pixels
       - action
     keys_to_cache:
       - action
+split_unit: episodes
+history_size: 1
 img_size: 32
 patch_size: 4
 decoder_size: 32

@@ -25,13 +25,40 @@ class ZScoreNormalizer:
         return ((x - self.mean) / self.std).float()
 
 
-def get_column_normalizer(dataset, source: str, target: str):
-    """Get normalizer for a specific column in the dataset."""
-    col_data = dataset.get_col_data(source)
-    data = torch.from_numpy(np.array(col_data))
+def split_episodes(dataset, train_fraction, generator):
+    """Split clips by original episode ID, excluding episodes without clips."""
+    episodes = np.array([ep for ep, _ in dataset.clip_indices])
+    eligible = np.unique(episodes)
+    order = torch.randperm(len(eligible), generator=generator).numpy()
+    n_train = int(train_fraction * len(eligible))
+    if not 0 < n_train < len(eligible):
+        raise ValueError("episode split needs at least one episode on each side")
+    train_mask = np.isin(episodes, eligible[order[:n_train]])
+    return (
+        torch.utils.data.Subset(dataset, np.flatnonzero(train_mask).tolist()),
+        torch.utils.data.Subset(dataset, np.flatnonzero(~train_mask).tolist()),
+    )
+
+
+def get_column_stats(dataset, source, episodes=None):
+    """Row-weighted column moments, optionally restricted to whole episodes."""
+    col_data = np.array(dataset.get_col_data(source))
+    if episodes is not None:
+        col_data = np.concatenate([
+            col_data[dataset.offsets[ep]:dataset.offsets[ep] + dataset.lengths[ep]]
+            for ep in sorted(set(episodes))
+        ])
+    data = torch.from_numpy(col_data)
     data = data[~torch.isnan(data).any(dim=1)]
-    mean = data.mean(0, keepdim=True).clone()
-    std = data.std(0, keepdim=True).clone()
+    return {"mean": data.mean(0, keepdim=True).clone(),
+            "std": data.std(0, keepdim=True).clone()}
+
+
+def get_column_normalizer(dataset, source: str, target: str, stats=None):
+    """Normalize a column using supplied moments, or fit them on the dataset."""
+    stats = get_column_stats(dataset, source) if stats is None else stats
+    mean = torch.as_tensor(stats["mean"]).reshape(1, -1)
+    std = torch.as_tensor(stats["std"]).reshape(1, -1)
     return dt.transforms.WrapTorchTransform(ZScoreNormalizer(mean, std), source=source, target=target)
 
 

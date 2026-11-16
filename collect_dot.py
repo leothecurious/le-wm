@@ -19,6 +19,7 @@ import stable_worldmodel as swm
 import torch
 from stable_worldmodel.data.formats.hdf5 import HDF5Writer
 from torch.distributions import VonMises
+from omegaconf import OmegaConf
 
 
 def render(pos, size, sigma):
@@ -57,6 +58,7 @@ def run(cfg):
                     "state": pos[i].numpy().astype(np.float32),
                     "action": actions[i].numpy().astype(np.float32),
                 })
+    OmegaConf.save(cfg, out.with_suffix(".yaml"))
     print(out)
 
 

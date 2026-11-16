@@ -49,13 +49,68 @@ export STABLEWM_HOME=/path/to/your/storage
 
 Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `$STABLEWM_HOME/pusht_expert_train.h5`.
 
-The moving-dot benchmark, after Sobal et al. (2022), is recorded locally and trained like any other dataset. Its noise is blended in at load time (`noise.py`), fixed per episode or redrawn every frame:
+The moving-dot benchmark adapts [Sobal et al. (2022)](https://arxiv.org/abs/2211.10831),
+Section 3 and Appendices A.2/A.4, to LeWM. Record three independent datasets:
 
 ```bash
-uv run collect_dot.py
-uv run train.py --config-name=lewm_grounded data=dot noise.mode=episode noise.alpha=1.5
-uv run measure.py --config-name=dot policy=dot_grounded_episode1.5_seed3072/weights_epoch_10.pt data.noise.mode=episode data.noise.alpha=1.5
+uv run collect_dot.py name=/absolute/path/dot_train.h5
+uv run collect_dot.py --config-name=dot_probe name=/absolute/path/dot_probe.h5
+uv run collect_dot.py --config-name=dot_test name=/absolute/path/dot_test.h5
+PATH="$HOME/.local/bin:$PATH" bash scripts/run.sh dot_grounded_clean train.py --config-name=lewm_grounded data=dot data.dataset.name=/absolute/path/dot_train.h5
+uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt data.name=/absolute/path/dot_test.h5 data.probe.name=/absolute/path/dot_probe.h5
 ```
+
+### Moving-dot evaluation protocol
+
+The dot training config uses one observed frame per context and holds out whole
+episodes for validation. No validation frame or episode-fixed noise pattern is
+shared with an encoder-training episode. Action normalization is fitted only on
+training episodes, saved in the checkpoint's `config.yaml`, and reused for both
+probe fitting and test. Other datasets retain their existing clip split.
+
+Uniform noise is fixed within an episode (`noise.mode=episode`) or redrawn per
+frame (`noise.mode=frame`). Set `noise.alpha` during training and the matching
+`data.noise.mode` and `data.noise.alpha` during measurement. Noise depends on
+local episode/frame IDs and a noise seed, not on dataset identity. By default,
+probe fitting uses the training noise seed plus 1 and test uses it plus 2.
+Measurement rejects shared dataset paths and reused stage noise seeds. Explicit
+measurement seeds may override those defaults, but must remain distinct. New
+trajectories and new noise are both required for this evaluation protocol.
+
+The primary `rollout_probe` freezes the encoder and predictor, encodes only the
+first frame, and rolls forward with the recorded actions for all 16 transitions.
+One linear readout is fitted jointly to x and y on the separate probe dataset.
+It scores all 17 time steps on the separate test dataset, reporting Euclidean
+position RMSE per time step and their arithmetic mean, in units of the square's
+side. Pooled RMSE and a fixed center predictor are also reported. The existing
+linear/MLP encoder probes and effective rank remain separate diagnostics; they
+are not the paper's rollout score.
+
+The default recording presets contain 10,000 episodes per stage for validation.
+`dot_paper_train`, `dot_paper_probe`, and `dot_paper_test` collection presets
+request the paper's 1,000,000 / 300,000 / 10,000 sequences; `measure.py
+--config-name=dot_paper` requests all probe and test sequences. These large
+presets require a separately budgeted run: recorded RGB data and saved latents
+consume substantial disk/RAM. Counts do not establish convergence, and the
+encoder's validation fraction reduces the number of training episodes actually
+used. Dataset-sidecar YAML files retain collection settings and seeds.
+
+Intentional adaptations: LeWM's ViT and action-conditioned transformer replace
+the paper's CNN and recurrent predictor; frames are 32 by 32 rather than 28 by
+28, replicated to RGB and quantized to uint8. Noise is blended by dividing by
+`1 + alpha` to retain that storage range. We keep LeWM image preprocessing,
+one-step training, and the roadmap's latent, pixel, grounded and latent-twin
+objectives. The paper trains on full sequences and uses a linear probe trained
+by gradient descent; our linear readout uses least squares. These are an adapted
+benchmark, not an exact numerical reproduction. Dataset/noise seeds are explicit
+project choices, not seed values reported by the paper.
+
+`trainer.max_epochs` sets the learning-rate schedule's full budget. A two-epoch
+run has its own warmup and decay, rather than taking the first two epochs of a
+longer schedule. Keep collection configs, checkpoint hashes, noise settings,
+validation split and training budget with each result. Hyperparameters selected
+on clean frames are a transfer experiment; the paper's main results tune each
+noise setting separately.
 
 ## Training
 

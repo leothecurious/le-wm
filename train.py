@@ -15,7 +15,8 @@ from metrics.pairs import PairCallback, load_frames
 from module import SIGReg, grad_shares
 from noise import PixelNoise
 from tag import PixelTag
-from utils import get_column_normalizer, get_img_preprocessor, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback
+from utils import (get_column_normalizer, get_column_stats, get_img_preprocessor,
+                   split_episodes, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback)
 
 
 def lewm_forward(self, batch, stage, cfg):
@@ -96,6 +97,19 @@ def run(cfg):
     dataset = swm.data.load_dataset(
         dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
     )
+    rnd_gen = torch.Generator().manual_seed(cfg.seed)
+    split_unit = cfg.get("split_unit", "clips")
+    if split_unit == "episodes":
+        train_set, val_set = split_episodes(dataset, cfg.train_split, rnd_gen)
+        train_episodes = {dataset.clip_indices[i][0] for i in train_set.indices}
+    elif split_unit == "clips":
+        train_set, val_set = spt.data.random_split(
+            dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
+        )
+        train_episodes = None
+    else:
+        raise ValueError(f"unknown split_unit: {split_unit}")
+
     # Pixels leave the workers as uint8, a quarter of the float32 bytes, and are
     # preprocessed on the GPU by the data module's gpu_transform.
     transforms = []
@@ -104,8 +118,13 @@ def run(cfg):
         for col in cfg.data.dataset.keys_to_load:
             if col.startswith("pixels"):
                 continue
-            normalizer = get_column_normalizer(dataset, col, col)
+            stats = get_column_stats(dataset, col, episodes=train_episodes)
+            normalizer = get_column_normalizer(dataset, col, col, stats=stats)
             transforms.append(normalizer)
+            if col == "action":
+                cfg.data.action_normalizer = {
+                    key: value.flatten().tolist() for key, value in stats.items()
+                }
 
         cfg.model.action_encoder.input_dim = cfg.data.dataset.frameskip * dataset.get_dim("action")
 
@@ -117,11 +136,6 @@ def run(cfg):
         frames = load_frames(dataset_name, cfg.pair.n, seed=0, cache_dir=cache_dir)
         pair_callbacks.append(PairCallback(frames, tag, cfg.img_size, cfg.pair.every_n_steps))
     dataset = PixelNoise(**cfg.noise).wrap(tag.wrap(dataset))
-
-    rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    train_set, val_set = spt.data.random_split(
-        dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
-    )
 
     train = torch.utils.data.DataLoader(train_set, **cfg.loader,shuffle=True, drop_last=True, generator=rnd_gen)
     val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)

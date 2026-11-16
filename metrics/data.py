@@ -5,6 +5,9 @@ every ``frameskip`` rows from ``start``, with the actions between them, as in
 training. Windows shorter than the requested length are padded and masked.
 """
 
+from copy import deepcopy
+from pathlib import Path
+
 import numpy as np
 import stable_pretraining as spt
 import stable_worldmodel as swm
@@ -32,7 +35,7 @@ def load(cfg, num_frames, target_columns=(), cache_dir=None):
     )
     ds.transform = spt.data.transforms.Compose(
         get_img_preprocessor("pixels", "pixels", cfg.img_size),
-        get_column_normalizer(ds, "action", "action"),
+        get_column_normalizer(ds, "action", "action", stats=cfg.get("action_normalizer")),
     )
     for c in cfg.get("columns") or []:
         dim = ds.get_dim(c.column)
@@ -148,21 +151,52 @@ def target_meta(specs):
 
 
 def build(cfg, specs, num_frames, min_frames, cache_dir=None):
-    """Loader over the sampled windows, plus targets and split for each one."""
-    ds = load(cfg, num_frames, sorted({s.column for s in specs}), cache_dir)
-    windows = sample_windows(
-        ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
-    )
+    """Loader over sampled windows; separate probe/test files when configured."""
+    columns = sorted({s.column for s in specs})
+    if cfg.get("probe") is not None:
+        probe_cfg = deepcopy(cfg)
+        probe_cfg.name = cfg.probe.name
+        probe_cfg.n = cfg.probe.n
+        probe_cfg.noise.seed = cfg.probe.noise_seed
+        if cfg.noise.mode != "off" and probe_cfg.noise.seed == cfg.noise.seed:
+            raise ValueError("probe and test noise seeds must differ")
+        probe_ds = load(probe_cfg, num_frames, columns, cache_dir)
+        ds = load(cfg, num_frames, columns, cache_dir)
+        if Path(probe_ds.h5_path).resolve() == Path(ds.h5_path).resolve():
+            raise ValueError("probe and test must use different dataset paths")
+        probe_windows = sample_windows(
+            probe_ds, num_frames, min_frames, cfg.sampler, cfg.start, probe_cfg.n, cfg.seed
+        )
+        windows = sample_windows(
+            ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
+        )
+        samples = torch.utils.data.ConcatDataset([
+            Windows(probe_ds, probe_windows, num_frames), Windows(ds, windows, num_frames)
+        ])
+        targets = np.concatenate([
+            window_targets(probe_ds, probe_windows, num_frames, specs),
+            window_targets(ds, windows, num_frames, specs),
+        ])
+        episodes = np.array(
+            [w[0] for w in probe_windows] + [w[0] + len(probe_ds.lengths) for w in windows]
+        )
+        train_mask = np.concatenate([
+            np.ones(len(probe_windows), dtype=bool), np.zeros(len(windows), dtype=bool)
+        ])
+    else:
+        ds = load(cfg, num_frames, columns, cache_dir)
+        windows = sample_windows(
+            ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
+        )
+        samples = Windows(ds, windows, num_frames)
+        targets = window_targets(ds, windows, num_frames, specs)
+        episodes = np.array([w[0] for w in windows])
+        train_mask = split_episodes(windows, cfg.train_fraction, cfg.seed)
     loader = torch.utils.data.DataLoader(
-        Windows(ds, windows, num_frames),
+        samples,
         batch_size=cfg.batch_size,
         num_workers=cfg.num_workers,
         shuffle=False,
         pin_memory=torch.cuda.is_available(),
     )
-    return (
-        loader,
-        window_targets(ds, windows, num_frames, specs),
-        np.array([w[0] for w in windows]),
-        split_episodes(windows, cfg.train_fraction, cfg.seed),
-    )
+    return loader, targets, episodes, train_mask
