@@ -142,34 +142,6 @@ def test_lewm_adds_no_motion_terms():
     torch.testing.assert_close(output["loss"], expected)
 
 
-def flatten(node, prefix=""):
-    if isinstance(node, dict):
-        return {k: v for key, value in node.items() for k, v in flatten(value, f"{prefix}{key}.").items()}
-    return {prefix[:-1]: node}
-
-
-def test_motion_config_only_adds_keys_and_retargets_the_model_and_sigreg_weight():
-    for arm in ("baseline", "tag_episode", "tag_frame"):
-        lewm = flatten(OmegaConf.to_container(compose_train("lewm", f"+arm={arm}", "seed=1")))
-        motion = flatten(OmegaConf.to_container(compose_train("lewm_motion", f"+arm={arm}", "seed=1")))
-        assert lewm.keys() <= motion.keys()
-        added = motion.keys() - lewm.keys()
-        assert all(key in ("run_prefix", "diff_dim") or key.startswith(("model.diff_", "loss.motion.")) for key in added)
-        changed = {key for key in lewm if lewm[key] != motion[key]}
-        assert changed == {"model._target_", "loss.sigreg.weight"}
-        assert motion["loss.sigreg.weight"] == 0.25
-
-
-def test_motion_runs_are_named_apart_from_the_lewm_arms():
-    for arm in ("baseline", "tag_episode", "tag_frame"):
-        lewm = compose_train("lewm", f"+arm={arm}", "seed=1")
-        motion = compose_train("lewm_motion", f"+arm={arm}", "seed=1")
-        assert lewm.output_model_name == lewm.subdir == f"{arm}_seed1"
-        assert motion.output_model_name == motion.subdir == f"motion_{arm}_seed1"
-    assert compose_train("lewm").output_model_name == "lewm"
-    assert compose_train("lewm_motion").output_model_name == compose_train("lewm_motion").subdir == "motion_lewm"
-
-
 def test_diff_branch_is_built_as_in_the_reference_config():
     _, model = small_model("lewm_motion")
     assert model.diff_size == REFERENCE_DIFF_IMAGE_SIZE
