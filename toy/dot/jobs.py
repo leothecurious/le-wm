@@ -1,4 +1,4 @@
-"""Job files for the moving-dot runs, one ``<name> <command>`` line per run for scripts/gpu_lane.sh.
+"""Job files for the moving-dot runs, one ``<name> <command>`` line per run.
 
     uv run -m toy.dot.jobs lr > lr.jobs
     uv run -m toy.dot.jobs weights --lr sigreg=A,pixel=B > weights.jobs
@@ -40,9 +40,9 @@ def lr_jobs():
 
 def weight_jobs(lr):
     for w in WEIGHTS:
-        yield line(f"dot_beta_{w:g}", objective="grounded", beta=w, lr=lr["sigreg"], seed=1)
+        yield line(f"dot_beta_{w:g}", objective="grounded", **{"loss.beta": w}, lr=lr["sigreg"], seed=1)
     for w in WEIGHTS:
-        yield line(f"dot_lam_{w:g}", objective="latent_twin", lam=w, lr=lr["pixel"], seed=1)
+        yield line(f"dot_lam_{w:g}", objective="latent_twin", **{"loss.lam": w}, lr=lr["pixel"], seed=1)
 
 
 def grid_jobs(lr, beta, lam):
@@ -50,7 +50,7 @@ def grid_jobs(lr, beta, lam):
         for objective in OBJECTIVES:
             for noise, alpha in settings():
                 name = f"dot_{objective}_{noise}{alpha:g}_seed{seed}"
-                yield line(name, objective=objective, noise=noise, alpha=alpha, lr=lr[objective], beta=beta, lam=lam, seed=seed)
+                yield line(name, objective=objective, noise=noise, alpha=alpha, lr=lr[objective], **{"loss.beta": beta, "loss.lam": lam}, seed=seed)
 
 
 def parse_lr(text):

@@ -25,22 +25,22 @@ def compute(model, batch, objective, sigreg=None, beta=0.0, lam=0.0, shares=Fals
     with torch.no_grad():
         out = {"pred_loss": pred_loss.detach(), "copy_loss": F.mse_loss(s[:, :-1], target)}
 
+    if model.decoder is not None:
+        out["pixel_loss"] = F.mse_loss(model.decode(pred), frames[:, 1:])
+    if objective in ("sigreg", "grounded"):
+        out["sigreg_loss"] = sigreg(s.transpose(0, 1))
+
     terms = {}
     if objective == "sigreg":
-        out["sigreg_loss"] = sigreg(s.transpose(0, 1))
         out["loss"] = pred_loss + SIGREG_WEIGHT * out["sigreg_loss"]
     elif objective == "grounded":
-        out["sigreg_loss"] = sigreg(s.transpose(0, 1))
-        out["pixel_loss"] = F.mse_loss(model.decode(pred), frames[:, 1:])
-        out["loss"] = pred_loss + SIGREG_WEIGHT * out["sigreg_loss"] + beta * out["pixel_loss"]
         terms = {"latent": pred_loss, "pixel": beta * out["pixel_loss"]}
+        out["loss"] = terms["latent"] + terms["pixel"] + SIGREG_WEIGHT * out["sigreg_loss"]
     elif objective == "pixel":
-        out["pixel_loss"] = F.mse_loss(model.decode(pred), frames[:, 1:])
         out["loss"] = out["pixel_loss"]
     elif objective == "latent_twin":
-        out["pixel_loss"] = F.mse_loss(model.decode(pred), frames[:, 1:])
-        out["loss"] = out["pixel_loss"] + lam * pred_loss
         terms = {"latent": lam * pred_loss, "pixel": out["pixel_loss"]}
+        out["loss"] = terms["latent"] + terms["pixel"]
     elif objective == "supervised":
         states = torch.cat([s[:, :1], pred], dim=1)
         out["position_loss"] = (model.head(states) - batch["pos"]).square().sum(-1).mean()

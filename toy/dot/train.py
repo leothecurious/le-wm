@@ -1,6 +1,6 @@
 """Train and evaluate one moving-dot run.
 
-    uv run -m toy.dot.train objective=grounded noise=fixed alpha=1.5 beta=1 lr=1e-3 seed=1 subdir=NAME
+    uv run -m toy.dot.train objective=grounded noise=fixed alpha=1.5 loss.beta=1 lr=1e-3 seed=1 subdir=NAME
 
 Arguments override DEFAULTS. $STABLEWM_HOME/checkpoints/<subdir> receives config.yaml,
 metrics.csv (one row per epoch), weights.pt and result.json (probe RMSE, weights sha256).
@@ -27,8 +27,10 @@ DEFAULTS = {
     "alpha": 0.0,
     "seed": 1,
     "lr": 1e-3,
-    "beta": 1.0,  # weight of the pixel term in the grounded objective
-    "lam": 1.0,  # weight of the latent term in the latent-augmented twin
+    "loss": {
+        "beta": 1.0,  # weight of the pixel term in the grounded objective
+        "lam": 1.0,  # weight of the latent term in the latent-augmented twin
+    },
     "epochs": 10,
     "batch_size": 500,
     "train_size": data.SPLIT_SIZES["train"],
@@ -50,12 +52,12 @@ def loader(cfg, split, device, size, **kw):
     return data.batches(split, cfg.noise, cfg.alpha, batch_size=cfg.batch_size, size=size, device=device, **kw)
 
 
-def validate(model, cfg, objective, sigreg, device):
+def validate(model, cfg, sigreg, device):
     """Mean of each loss term over the validation split."""
     sums, n = {}, 0
     with torch.no_grad():
         for batch in loader(cfg, "val", device, cfg.val_size):
-            for k, v in compute(model, batch, objective, sigreg, cfg.beta, cfg.lam).items():
+            for k, v in compute(model, batch, cfg.objective, sigreg, cfg.loss.beta, cfg.loss.lam).items():
                 sums[k] = sums.get(k, 0.0) + float(v.detach())
             n += 1
     return {f"validate/{k}": v / n for k, v in sums.items()}
@@ -75,7 +77,7 @@ def run(cfg):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     out = run_dir(cfg)
     out.mkdir(parents=True, exist_ok=True)
-    OmegaConf.save(OmegaConf.merge(cfg, {"loss": {"beta": cfg.beta, "lam": cfg.lam}}), out / "config.yaml")
+    OmegaConf.save(cfg, out / "config.yaml")
 
     model = DotModel(
         decoder=cfg.objective in ("pixel", "grounded", "latent_twin"), position_head=cfg.objective == "supervised"
@@ -89,7 +91,7 @@ def run(cfg):
         sums, shares, n = {}, {"latent": [], "pixel": []}, 0
         for batch in loader(cfg, "train", device, cfg.train_size, seed=cfg.seed, epoch=epoch, shuffle=True):
             measure = step % cfg.grad_share_every == 0
-            terms = compute(model, batch, cfg.objective, sigreg, cfg.beta, cfg.lam, shares=measure)
+            terms = compute(model, batch, cfg.objective, sigreg, cfg.loss.beta, cfg.loss.lam, shares=measure)
             opt.zero_grad(set_to_none=True)
             terms["loss"].backward()
             opt.step()
@@ -108,7 +110,7 @@ def run(cfg):
                 row[f"fit/{k}_grad_share"] = sum(v) / len(v)
                 row[f"fit/{k}_grad_share_min"] = min(v)
         model.eval()
-        rows.append({**row, **validate(model, cfg, cfg.objective, sigreg, device)})
+        rows.append({**row, **validate(model, cfg, sigreg, device)})
         write_csv(out / "metrics.csv", rows)
         if not all(torch.isfinite(torch.tensor(v)) for v in rows[-1].values()):
             raise RuntimeError(f"non-finite loss in epoch {epoch}")
