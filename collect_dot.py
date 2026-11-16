@@ -1,7 +1,7 @@
 """Record moving-dot episodes as a stable-worldmodel HDF5 dataset.
 
 A dot in the unit square moves by actions of norm at most ``max_step`` and stops
-at the edges. Each episode draws a heading uniformly; each action's direction is
+``margin`` short of the edges. Each episode draws a heading uniformly; each action's direction is
 Von Mises around it and its norm uniform in [0, max_step]. Frames are a Gaussian
 bump of peak 255, grey in all three channels. Rows hold the frame, the dot's
 (x, y) as ``state`` and the action taken from it; the last row's action is NaN.
@@ -34,9 +34,10 @@ def episodes(cfg, n, generator):
     theta = VonMises(heading.expand(n, cfg.steps), torch.tensor(cfg.concentration)).sample()
     norm = torch.rand(n, cfg.steps, 1, generator=generator) * cfg.max_step
     actions = norm * torch.stack([theta.cos(), theta.sin()], -1)
-    pos = [torch.rand(n, 2, generator=generator)]
+    lo, hi = cfg.margin, 1 - cfg.margin
+    pos = [lo + (hi - lo) * torch.rand(n, 2, generator=generator)]
     for t in range(cfg.steps):
-        pos.append((pos[-1] + actions[:, t]).clamp(0, 1))
+        pos.append((pos[-1] + actions[:, t]).clamp(lo, hi))
     pos = torch.stack(pos, 1)  # (n, steps + 1, 2)
     frames = (render(pos, cfg.size, cfg.sigma) * 255).round().to(torch.uint8)
     actions = torch.cat([actions, torch.full((n, 1, 2), float("nan"))], 1)

@@ -105,7 +105,7 @@ by gradient descent; our linear readout uses least squares. These are an adapted
 benchmark, not an exact numerical reproduction. Dataset/noise seeds are explicit
 project choices, not seed values reported by the paper.
 
-- Action directions use Von Mises concentration 0.2, the reference code's value (vladisai/JEPA_SSL_NeurIPS_2022, `data/single.py:22`); the paper's App. A.2 says 1.3.
+- Where the reference code (vladisai/JEPA_SSL_NeurIPS_2022, `data/single.py`) and the paper's App. A.2 disagree, the dot follows the code: Von Mises concentration 0.2 (paper 1.3), blur 1.3 px and largest step 4 px on its 28-px frame, divided by 27 (paper 0.05 and 0.14), and a 2-sigma margin from every edge (paper clips to [0, 1]).
 - The encoder and predictor have 17.9M parameters (26.7M with the pixel decoder), against about 1.18M in the paper.
 - Training runs 10 epochs over a fixed 100k-sequence set (about 11k steps per epoch), whereas the paper streams about 1M fresh sequences once.
 - RMSE sums the x and y errors, so absolute values differ from the paper's; compare r, the rollout RMSE over the centre-predictor RMSE.
