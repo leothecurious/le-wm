@@ -85,14 +85,12 @@ side. Pooled RMSE and a fixed center predictor are also reported. The existing
 linear/MLP encoder probes and effective rank remain separate diagnostics; they
 are not the paper's rollout score.
 
-The default recording presets contain 10,000 episodes per stage for validation.
-`dot_paper_train`, `dot_paper_probe`, and `dot_paper_test` collection presets
-request the paper's 1,000,000 / 300,000 / 10,000 sequences; `measure.py
---config-name=dot_paper` requests all probe and test sequences. These large
-presets require a separately budgeted run: recorded RGB data and saved latents
-consume substantial disk/RAM. Counts do not establish convergence, and the
-encoder's validation fraction reduces the number of training episodes actually
-used. Dataset-sidecar YAML files retain collection settings and seeds.
+The default recordings contain 10,000 episodes per stage. The paper's sizes are
+overrides: `collect_dot.py episodes=1000000` for training,
+`--config-name=dot_probe episodes=300000` for the probe set (the test set keeps
+10,000), and `data.probe.n=300000` in `measure.py`. At these sizes the recorded
+RGB data and saved latents consume substantial disk and RAM. Dataset-sidecar
+YAML files retain collection settings and seeds.
 
 Intentional adaptations: LeWM's ViT and action-conditioned transformer replace
 the paper's CNN and recurrent predictor; frames are 32 by 32 rather than 28 by
