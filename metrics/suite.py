@@ -89,10 +89,6 @@ def rollout_probe(lat, max_train=None, max_test=None, seed=0, **_):
     if any(lat.target_names.count(name) != 1 for name in ("dot_x", "dot_y")):
         raise ValueError("rollout_probe requires unique dot_x and dot_y targets")
     columns = [lat.target_names.index(name) for name in ("dot_x", "dot_y")]
-    if any(lat.target_angle[j] for j in columns):
-        raise ValueError("dot_x and dot_y must be non-angular coordinates")
-    if lat.predicted_z.shape[:2] != lat.valid.shape:
-        raise ValueError("predicted_z must align with the valid frame mask")
     n, t, side = _frames(lat)
     tr, te = _split(side, max_train, max_test, seed)
     if not len(tr) or not len(te):
