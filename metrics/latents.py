@@ -40,10 +40,8 @@ class Latents:
 
 
 @torch.inference_mode()
-def extract(model, loader, precision="fp32", rollout=False, history_size=1):
+def extract(model, loader, precision="fp32", rollout=False):
     """Encode each frame, optionally also roll out from only the first frame."""
-    if rollout:
-        assert history_size == 1, "rollout evaluation uses the first-frame protocol"
     device = next(model.parameters()).device
     dtype = PRECISION[precision]
     out = {"z": [], "action": [], "valid": []}
@@ -54,9 +52,9 @@ def extract(model, loader, precision="fp32", rollout=False, history_size=1):
         with torch.autocast(device.type, dtype=dtype, enabled=dtype is not None):
             if rollout:
                 prediction = model.rollout(
-                    {"pixels": pixels[:, None, :history_size]},
+                    {"pixels": pixels[:, None, :1]},
                     batch["action"][:, None, :-1].to(device, non_blocking=True),
-                    history_size=history_size,
+                    history_size=1,
                 )["predicted_emb"][:, 0]
                 assert prediction.shape[:2] == pixels.shape[:2]
                 out["predicted_z"].append(prediction.float().cpu())

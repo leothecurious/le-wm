@@ -1,7 +1,0 @@
-defaults:
-  - dot
-  - _self_
-
-name: dot_train.h5
-seed: 0
-episodes: 1000000

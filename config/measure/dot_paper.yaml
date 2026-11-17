@@ -1,8 +1,0 @@
-defaults:
-  - dot
-  - _self_
-
-data:
-  n: 10000
-  probe:
-    n: 300000

@@ -35,7 +35,6 @@ windows:
   frames: 17 # a whole episode
   min_frames: 17
   rollout: true # first frame followed by predictions from actions only
-  history_size: 1
   precision: fp32 # fp32 | bf16 | fp16
 
 # column[:, index]; angle = periodic value

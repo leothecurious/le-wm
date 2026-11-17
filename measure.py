@@ -40,10 +40,7 @@ def get_latents(cfg, model, latents_path):
         cfg.data, cfg.targets, w.frames, w.min_frames, cfg.paths.data
     )
     names, angle, group = data.target_meta(cfg.targets)
-    out = extract(
-        model, loader, w.precision,
-        rollout=w.get("rollout", False), history_size=w.get("history_size", 1),
-    )
+    out = extract(model, loader, w.precision, rollout=w.get("rollout", False))
     lat = Latents(
         **out,
         target=torch.from_numpy(target),
@@ -80,7 +77,7 @@ def run(cfg: DictConfig):
     resolve_seed(cfg.data.tag, run_path)
     if cfg.data.get("probe") is not None:
         saved = OmegaConf.load(run_path / "config.yaml")
-        assert saved.history_size == cfg.windows.history_size == 1, (
+        assert saved.history_size == 1, (
             "the dot rollout protocol requires a model trained with history_size=1"
         )
         assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
