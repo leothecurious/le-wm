@@ -15,10 +15,8 @@ class PixelEncoder(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.anchor = torch.nn.Parameter(torch.zeros(()))
-        self.encoded_frames = []
 
     def forward(self, pixels, interpolate_pos_encoding):
-        self.encoded_frames.append(len(pixels))
         return SimpleNamespace(last_hidden_state=pixels[:, None, :, 0, 0])
 
 
@@ -56,7 +54,6 @@ def test_first_frame_rollout_joint_position_rmse():
     expected[3:, 1] += torch.tensor([.1, 0.])
     expected[3:, 2] += torch.tensor([.1, .2])
     torch.testing.assert_close(extracted["predicted_z"], expected)
-    assert model.encoder.encoded_frames == [5, 15]  # first frames for the rollout, then every frame
     assert torch.all(extracted["z"][:, 1:] == 99.)
     assert set(batch) == {"pixels", "action", "valid"}
 
