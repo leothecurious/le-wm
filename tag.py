@@ -20,19 +20,20 @@ import torch
 from omegaconf import OmegaConf
 
 
-def resolve_seed(tag_cfg, checkpoint_dir, key="tag"):
-    """Fill a null ``tag_cfg.seed`` from section ``key`` of the ``config.yaml`` in ``checkpoint_dir``.
+def resolve_seed(section_cfg, checkpoint_dir, key="tag"):
+    """Fill a null ``section_cfg.seed``, the tag or noise section of a config, from section ``key``
+    of the ``config.yaml`` in ``checkpoint_dir``.
 
     Seed 0 when there is no saved section to read: no checkpoint (the random
     policy), no ``config.yaml`` (a downloaded model) or a checkpoint trained
     before the section existed. The seed is read even while the tag is off, as the
     pair metric stamps the training colours regardless of mode.
     """
-    if tag_cfg.get("seed") is not None:
+    if section_cfg.get("seed") is not None:
         return
     config = None if checkpoint_dir is None else Path(checkpoint_dir) / "config.yaml"
     saved = OmegaConf.load(config).get(key) if config and config.exists() else None
-    tag_cfg.seed = saved.seed if saved else 0
+    section_cfg.seed = saved.seed if saved else 0
 
 
 class PixelTag:
