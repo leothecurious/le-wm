@@ -3,7 +3,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
-import stable_pretraining as spt
 import torch
 from hydra import compose, initialize_config_dir
 
@@ -22,8 +21,10 @@ def toy_dataset(root):
         f["action"] = rng.normal(size=(80, 2)).astype(np.float32)
 
 
-def fit(data, subdir, epochs):
+def fit(data, subdir, epochs, roots):
     overrides = [
+        f"paths.data={roots}",
+        f"paths.runs={roots}",
         f"subdir={subdir}",
         f"data.dataset.name={data}",
         "data.dataset.keys_to_load=[pixels,action]",
@@ -53,13 +54,15 @@ def state(run_dir):
 
 
 def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch):
-    monkeypatch.setenv("STABLEWM_HOME", str(tmp_path))
-    spt.set(cache_dir=str(tmp_path / "spt"))
+    home = tmp_path / "home"
+    monkeypatch.setenv("STABLEWM_HOME", str(home))
+    roots = tmp_path / "roots"
+    roots.mkdir()
     data = tmp_path / "toy.h5"
     toy_dataset(tmp_path)
-    runs = tmp_path / "checkpoints"
+    runs = roots / "checkpoints"
 
-    fit(data, "whole", 3)
+    fit(data, "whole", 3, roots)
 
     save = ResumeCkptCallback.on_train_epoch_end
     epochs_run = []
@@ -73,9 +76,9 @@ def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch)
     killed = False
     monkeypatch.setattr(ResumeCkptCallback, "on_train_epoch_end", save_then_die)
     with pytest.raises(RuntimeError, match="killed"):
-        fit(data, "killed", 3)
+        fit(data, "killed", 3, roots)
     killed = True
-    fit(data, "killed", 3)
+    fit(data, "killed", 3, roots)
 
     # the rerun continues at epoch 1 instead of repeating epoch 0
     assert epochs_run == [0, 1, 2]
@@ -84,3 +87,8 @@ def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch)
     assert resumed["lr_schedulers"] == whole["lr_schedulers"]
     for name, tensor in whole["state_dict"].items():
         torch.testing.assert_close(resumed["state_dict"][name], tensor, rtol=0, atol=0, msg=name)
+
+    # weights, resume state and metrics all follow paths.runs rather than the library default
+    assert list((runs / "lewm").glob("weights_epoch_*.pt"))
+    assert list((roots / "spt" / "killed").rglob("metrics.csv"))
+    assert not home.exists() or not any(home.rglob("*.pt"))

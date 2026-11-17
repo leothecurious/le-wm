@@ -3,6 +3,11 @@ defaults:
   - launcher: local
   - data: pusht
   - model: lewm
+  - optional /paths: local # machine-specific roots; /paths resolves through hydra_plugins/lewm_searchpath.py
+
+paths:
+  data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
+  runs: null # root for checkpoints/, spt/ and results; null = same default
 
 output_model_name: lewm
 subdir: ${output_model_name}

@@ -17,14 +17,14 @@ def measure_pairs(cfg, model):
     if cfg.pairs.suite == "t_position":
         tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
         return pairs.measure_t_position(model, cfg.pairs.n, tag, cfg.data.img_size)
-    frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.get("cache_dir"))
+    frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.paths.data)
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure(model, frames, tag, cfg.data.img_size, cfg.data.seed)
 
 
 def measure_colour(cfg, model):
     """Colour probe on dataset frames, each stamped with its own colour from the tag's hash."""
-    frames = pairs.load_frames(cfg.data.name, cfg.colour.n, cfg.data.seed, cfg.get("cache_dir"))
+    frames = pairs.load_frames(cfg.data.name, cfg.colour.n, cfg.data.seed, cfg.paths.data)
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure_colour(
         model, frames, tag, cfg.data.img_size, cfg.colour.kinds, cfg.colour.train_fraction, cfg.data.seed
@@ -37,7 +37,7 @@ def get_latents(cfg, model, latents_path):
 
     w = cfg.windows
     loader, target, episode, train = data.build(
-        cfg.data, cfg.targets, w.frames, w.min_frames, cfg.get("cache_dir")
+        cfg.data, cfg.targets, w.frames, w.min_frames, cfg.paths.data
     )
     names, angle, group = data.target_meta(cfg.targets)
     out = extract(model, loader, w.precision)
@@ -58,13 +58,13 @@ def get_latents(cfg, model, latents_path):
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
     cfg = OmegaConf.merge({"data": {"tag": {"mode": "off", "size": 5, "seed": None}}}, cfg)
-    model = swm.wm.utils.load_pretrained(cfg.policy)
+    model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent
+    results_path = Path(swm.data.utils.get_cache_dir(cfg.paths.runs), cfg.policy).parent
+    run_path = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder="checkpoints"), cfg.policy).parent
     resolve_seed(cfg.data.tag, run_path)
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem

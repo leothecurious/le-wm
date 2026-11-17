@@ -42,12 +42,9 @@ Datasets use the HDF5 format for fast loading. Download the data from [HuggingFa
 tar --zstd -xvf archive.tar.zst
 ```
 
-Place the extracted `.h5` files under `$STABLEWM_HOME` (defaults to `~/.stable-wm/`). You can override this path:
-```bash
-export STABLEWM_HOME=/path/to/your/storage
-```
+Place the extracted `.h5` files under `<data>/datasets/`. The roots come from `config/paths/local.yaml`, which is untracked: copy `config/paths/local.yaml.template` and set `data` (datasets) and `runs` (checkpoints, training logs and results). Without the file both default to `$STABLEWM_HOME` (`~/.stable_worldmodel/`), and `paths.data=...` on the command line overrides either.
 
-Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `$STABLEWM_HOME/pusht_expert_train.h5`.
+Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `<data>/datasets/pusht_expert_train.h5`.
 
 ## Training
 
@@ -66,7 +63,7 @@ To launch training:
 uv run train.py data=pusht
 ```
 
-Checkpoints are saved to `$STABLEWM_HOME` upon completion.
+Checkpoints are saved to `<runs>/checkpoints/<subdir>`, and `metrics.csv` to `<runs>/spt/<subdir>/runs`.
 
 For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
 

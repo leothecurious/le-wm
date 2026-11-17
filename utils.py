@@ -90,12 +90,13 @@ class SaveCkptCallback(Callback):
     """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs and at the last one, and
     ``weights_step_N.pt`` every ``step_interval`` optimizer steps (None = never), through save_pretrained."""
 
-    def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None):
+    def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None, cache_dir=None):
         super().__init__()
         self.run_name = run_name
         self.cfg = cfg
         self.epoch_interval = epoch_interval
         self.step_interval = step_interval
+        self.cache_dir = cache_dir
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
@@ -117,4 +118,5 @@ class SaveCkptCallback(Callback):
             run_name=self.run_name,
             config=self.cfg,
             filename=f'weights_{name}.pt',
+            cache_dir=self.cache_dir,
         )

@@ -1,0 +1,3 @@
+# Copy to config/paths/local.yaml (gitignored) and set this machine's roots.
+data: /path/to/data_root # datasets are read from <data>/datasets/
+runs: /path/to/runs_root # checkpoints/, spt/ and results go under <runs>/
