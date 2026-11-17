@@ -63,6 +63,36 @@ def run_dirs(policy, runs_root):
     return results_path.parent, run_path.parent
 
 
+def resolve_probe_protocol(cfg, run_path):
+    """Fill cfg.data's noise settings and action normalizer from the checkpoint's config, and check that the stages stay independent."""
+    saved = OmegaConf.load(run_path / "config.yaml")
+    assert saved.history_size == 1, (
+        "the dot rollout protocol requires a model trained with history_size=1"
+    )
+    assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
+    training_noise_seed = int(saved.noise.seed)
+    if cfg.data.noise.mode is None:
+        cfg.data.noise.mode = saved.noise.mode
+    if cfg.data.noise.alpha is None:
+        cfg.data.noise.alpha = saved.noise.alpha
+    if cfg.data.noise.seed is None:
+        cfg.data.noise.seed = training_noise_seed + 2
+    if cfg.data.probe.noise_seed is None:
+        cfg.data.probe.noise_seed = training_noise_seed + 1
+    if cfg.data.noise.mode != "off":
+        assert training_noise_seed not in (cfg.data.noise.seed, cfg.data.probe.noise_seed), (
+            "dot probe fitting and test must use noise seeds distinct from encoder training"
+        )
+    datasets_dir = swm.data.utils.get_cache_dir(cfg.paths.data, sub_folder="datasets")
+    training_path = Path(datasets_dir, saved.data.dataset.name)
+    for name in (cfg.data.name, cfg.data.probe.name):
+        assert Path(datasets_dir, name).resolve() != training_path.resolve(), (
+            "dot probe fitting and test require datasets separate from encoder training"
+        )
+    with open_dict(cfg):
+        cfg.data.action_normalizer = saved.data.action_normalizer
+
+
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
@@ -76,32 +106,7 @@ def run(cfg: DictConfig):
     results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
     if cfg.data.get("probe") is not None:
-        saved = OmegaConf.load(run_path / "config.yaml")
-        assert saved.history_size == 1, (
-            "the dot rollout protocol requires a model trained with history_size=1"
-        )
-        assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
-        training_noise_seed = int(saved.noise.seed)
-        if cfg.data.noise.mode is None:
-            cfg.data.noise.mode = saved.noise.mode
-        if cfg.data.noise.alpha is None:
-            cfg.data.noise.alpha = saved.noise.alpha
-        if cfg.data.noise.seed is None:
-            cfg.data.noise.seed = training_noise_seed + 2
-        if cfg.data.probe.noise_seed is None:
-            cfg.data.probe.noise_seed = training_noise_seed + 1
-        if cfg.data.noise.mode != "off":
-            assert training_noise_seed not in (cfg.data.noise.seed, cfg.data.probe.noise_seed), (
-                "dot probe fitting and test must use noise seeds distinct from encoder training"
-            )
-        datasets_dir = swm.data.utils.get_cache_dir(cfg.paths.data, sub_folder="datasets")
-        training_path = Path(datasets_dir, saved.data.dataset.name)
-        for name in (cfg.data.name, cfg.data.probe.name):
-            assert Path(datasets_dir, name).resolve() != Path(training_path).resolve(), (
-                "dot probe fitting and test require datasets separate from encoder training"
-            )
-        with open_dict(cfg):
-            cfg.data.action_normalizer = saved.data.action_normalizer
+        resolve_probe_protocol(cfg, run_path)
     else:
         resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
