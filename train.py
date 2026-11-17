@@ -133,7 +133,8 @@ def run(cfg):
     if cfg.pair.every_n_steps:
         frames = load_frames(dataset_name, cfg.pair.n, seed=0, cache_dir=cfg.paths.data)
         pair_callbacks.append(PairCallback(frames, tag, cfg.img_size, cfg.pair.every_n_steps))
-    dataset = PixelNoise(**cfg.noise).wrap(tag.wrap(dataset))
+    # in place, so train_set and val_set stamp too
+    PixelNoise(**cfg.noise).wrap(tag.wrap(dataset))
 
     train = torch.utils.data.DataLoader(train_set, **cfg.loader,shuffle=True, drop_last=True, generator=rnd_gen)
     val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)
