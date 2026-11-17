@@ -1,0 +1,17 @@
+defaults:
+  - lewm
+  - override model: hjepa
+  - _self_
+
+run_prefix: hjepa_
+output_model_name: hjepa
+
+data:
+  dataset:
+    num_steps: ${eval:'(${history_size} + ${num_preds} - 1) * ${model.upper.stride} + 1'}
+
+loss:
+  kind: hjepa
+  hjepa:
+    weight: 1.0
+    sigreg_weight: 0.09

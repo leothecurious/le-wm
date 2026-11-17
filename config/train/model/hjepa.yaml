@@ -1,0 +1,54 @@
+defaults:
+  - lewm
+  - _self_
+
+_target_: hjepa.HJEPA
+history_size: ${history_size}
+num_preds: ${num_preds}
+upper_lr: 1e-5
+checkpoint_vit: false
+
+# Official Push-T level 1 uses a smaller predictor than the fork's LeWM.
+predictor:
+  depth: 4
+  heads: 8
+  mlp_dim: 1024
+
+upper:
+  _target_: hjepa.UpperLevel
+  stride: 2
+  queue_size: 4000
+  encoder:
+    _target_: hjepa.ResidualLatentMLP
+    input_dim: ${embed_dim}
+    hidden_dim: 384
+    output_dim: ${embed_dim}
+  predictor:
+    _target_: module.ARPredictor
+    num_frames: ${history_size}
+    input_dim: ${embed_dim}
+    hidden_dim: ${embed_dim}
+    output_dim: ${embed_dim}
+    depth: 6
+    heads: 16
+    mlp_dim: 2048
+    dim_head: 64
+    dropout: 0.1
+    emb_dropout: 0.0
+  pred_proj:
+    _target_: module.MLP
+    input_dim: ${embed_dim}
+    output_dim: ${embed_dim}
+    hidden_dim: 2048
+    norm_fn:
+      _target_: torch.nn.BatchNorm1d
+      _partial_: true
+  action_encoder:
+    _target_: hjepa.LatentActionEmbedder
+    input_dim: 4
+    emb_dim: ${embed_dim}
+  action_pool:
+    _target_: hjepa.SequenceEncoder
+    output_dim: 4
+    input_dim: ${embed_dim}
+    max_chunk: ${eval:'${model.upper.stride} + 1'}

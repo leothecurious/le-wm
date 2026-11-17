@@ -52,6 +52,7 @@ checkpoint:
   every_n_steps: null
 
 loss:
+  kind: latent
   sigreg:
     weight: 0.09
     kwargs:

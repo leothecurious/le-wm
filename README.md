@@ -187,5 +187,9 @@ PY
 
 After conversion, load via `swm.policy.AutoCostModel('pusht/lewm')` as usual.
 
+## H-JEPA
+
+See [the H-JEPA integration guide](docs/hjepa.md) for the two-level Push-T port, study configs, and validation scope.
+
 ## Contact & Contributions
 Feel free to open [issues](https://github.com/lucas-maes/le-wm/issues)! For questions or collaborations, please contact `lucas.maes@mila.quebec`

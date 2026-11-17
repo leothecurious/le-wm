@@ -16,6 +16,17 @@ from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback
 
 
+def training_forward(self, batch, stage, cfg):
+    if cfg.loss.kind != "hjepa":
+        return lejepa_forward(self, batch, stage, cfg)
+
+    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
+    output = self.model.training_losses(batch, self.sigreg, cfg.loss)
+    losses = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
+    self.log_dict(losses, on_step=True, sync_dist=True)
+    return output
+
+
 def lejepa_forward(self, batch, stage, cfg):
     """encode observations, predict next states, compute losses."""
 
@@ -103,10 +114,20 @@ def run(cfg):
 
     world_model = hydra.utils.instantiate(cfg.model)
 
+    if hasattr(world_model, "training_losses") != (cfg.loss.kind == "hjepa"):
+        raise ValueError("H-JEPA training requires --config-name=hjepa and loss.kind=hjepa")
+
+    optimizer = dict(cfg.optimizer)
+    if hasattr(world_model, "param_groups"):
+        groups = world_model.param_groups(cfg.optimizer.lr)
+
+        def optimizer(_params):
+            return spt.optim.create_optimizer(groups, dict(cfg.optimizer))
+
     optimizers = {
         'model_opt': {
             "modules": 'model',
-            "optimizer": dict(cfg.optimizer),
+            "optimizer": optimizer,
             "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
             "interval": "epoch",
         },
@@ -120,7 +141,7 @@ def run(cfg):
     world_model = spt.Module(
         model = world_model,
         sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
-        forward=partial(lejepa_forward, cfg=cfg),
+        forward=partial(training_forward, cfg=cfg),
         optim=optimizers,
     )
 
