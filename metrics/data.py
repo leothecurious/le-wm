@@ -150,6 +150,12 @@ def target_meta(specs):
     return names, angle, groups
 
 
+def _sample(cfg, columns, num_frames, min_frames, cache_dir):
+    ds = load(cfg, num_frames, columns, cache_dir)
+    windows = sample_windows(ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed)
+    return ds, windows
+
+
 def build(cfg, specs, num_frames, min_frames, cache_dir=None):
     """Loader over sampled windows; separate probe/test files when configured."""
     columns = sorted({s.column for s in specs})
@@ -160,16 +166,10 @@ def build(cfg, specs, num_frames, min_frames, cache_dir=None):
         probe_cfg.noise.seed = cfg.probe.noise_seed
         if cfg.noise.mode != "off" and probe_cfg.noise.seed == cfg.noise.seed:
             raise ValueError("probe and test noise seeds must differ")
-        probe_ds = load(probe_cfg, num_frames, columns, cache_dir)
-        ds = load(cfg, num_frames, columns, cache_dir)
+        probe_ds, probe_windows = _sample(probe_cfg, columns, num_frames, min_frames, cache_dir)
+        ds, windows = _sample(cfg, columns, num_frames, min_frames, cache_dir)
         if Path(probe_ds.h5_path).resolve() == Path(ds.h5_path).resolve():
             raise ValueError("probe and test must use different dataset paths")
-        probe_windows = sample_windows(
-            probe_ds, num_frames, min_frames, cfg.sampler, cfg.start, probe_cfg.n, cfg.seed
-        )
-        windows = sample_windows(
-            ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
-        )
         samples = torch.utils.data.ConcatDataset([
             Windows(probe_ds, probe_windows, num_frames), Windows(ds, windows, num_frames)
         ])
@@ -184,10 +184,7 @@ def build(cfg, specs, num_frames, min_frames, cache_dir=None):
             np.ones(len(probe_windows), dtype=bool), np.zeros(len(windows), dtype=bool)
         ])
     else:
-        ds = load(cfg, num_frames, columns, cache_dir)
-        windows = sample_windows(
-            ds, num_frames, min_frames, cfg.sampler, cfg.start, cfg.n, cfg.seed
-        )
+        ds, windows = _sample(cfg, columns, num_frames, min_frames, cache_dir)
         samples = Windows(ds, windows, num_frames)
         targets = window_targets(ds, windows, num_frames, specs)
         episodes = np.array([w[0] for w in windows])
