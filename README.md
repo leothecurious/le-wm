@@ -65,7 +65,7 @@ The dot training config uses one observed frame per context and holds out whole
 episodes for validation. No validation frame or episode-fixed noise pattern is
 shared with an encoder-training episode. Action normalization is fitted only on
 training episodes, saved in the checkpoint's `config.yaml`, and reused for both
-probe fitting and test. Other datasets retain their existing clip split.
+probe fitting and test.
 
 Uniform noise is fixed within an episode (`noise.mode=episode`) or redrawn per
 frame (`noise.mode=frame`). Set `noise.alpha` during training and the matching
@@ -81,9 +81,7 @@ first frame, and rolls forward with the recorded actions for all 16 transitions.
 One linear readout is fitted jointly to x and y on the separate probe dataset.
 It scores all 17 time steps on the separate test dataset, reporting Euclidean
 position RMSE per time step and their arithmetic mean, in units of the square's
-side. Pooled RMSE and a fixed center predictor are also reported. The existing
-linear/MLP encoder probes and effective rank remain separate diagnostics; they
-are not the paper's rollout score.
+side. Pooled RMSE and a fixed center predictor are also reported.
 
 The default recordings contain 10,000 episodes per stage. The paper's sizes are
 overrides: `collect_dot.py episodes=1000000` for training,
@@ -98,19 +96,17 @@ the paper's CNN and recurrent predictor; frames are 32 by 32 rather than 28 by
 `1 + alpha` to retain that storage range. We keep LeWM image preprocessing,
 one-step training, and the roadmap's latent, pixel, grounded and latent-twin
 objectives. The paper trains on full sequences and uses a linear probe trained
-by gradient descent; our linear readout uses least squares. These are an adapted
-benchmark, not an exact numerical reproduction. Dataset/noise seeds are explicit
-project choices, not seed values reported by the paper.
+by gradient descent; our linear readout uses least squares. Dot geometry follows
+the reference code where it differs from the paper's text (see
+`config/collect/dot.yaml`). Dataset/noise seeds are explicit project choices.
 
-- Where the reference code (vladisai/JEPA_SSL_NeurIPS_2022, `data/single.py`) and the paper's App. A.2 disagree, the dot follows the code: Von Mises concentration 0.2 (paper 1.3), blur 1.3 px and largest step 4 px on its 28-px frame, divided by 27 (paper 0.05 and 0.14), and a 2-sigma margin from every edge (paper clips to [0, 1]).
 - The encoder and predictor have 17.9M parameters (26.7M with the pixel decoder), against about 1.18M in the paper.
 - Training runs 10 epochs over a fixed 100k-sequence set (about 11k steps per epoch), whereas the paper streams about 1M fresh sequences once.
-- RMSE sums the x and y errors, so absolute values differ from the paper's; compare r, the rollout RMSE over the centre-predictor RMSE.
+- RMSE is Euclidean over (x, y); compare r, the rollout RMSE over the centre-predictor RMSE.
 
 `trainer.max_epochs` sets the learning-rate schedule's full budget. A two-epoch
 run has its own warmup and decay, rather than taking the first two epochs of a
-longer schedule. Keep collection configs, checkpoint hashes, noise settings,
-validation split and training budget with each result. Hyperparameters selected
+longer schedule. Hyperparameters selected
 on clean frames are a transfer experiment; the paper's main results tune each
 noise setting separately.
 
