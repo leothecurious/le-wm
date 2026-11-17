@@ -2,6 +2,11 @@ defaults:
   - launcher: local
   - solver: cem
   - _self_
+  - optional /paths: local
+
+paths:
+  data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
+  runs: null # root for checkpoints/, spt/ and results; null = same default
 
 world:
   env_name: swm/ReacherDMControl-v0

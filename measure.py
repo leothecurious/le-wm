@@ -17,14 +17,14 @@ def measure_pairs(cfg, model):
     if cfg.pairs.suite == "t_position":
         tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
         return pairs.measure_t_position(model, cfg.pairs.n, tag, cfg.data.img_size)
-    frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.get("cache_dir"))
+    frames = pairs.load_frames(cfg.data.name, cfg.pairs.n, cfg.data.seed, cfg.paths.data)
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure(model, frames, tag, cfg.data.img_size, cfg.data.seed)
 
 
 def measure_colour(cfg, model):
     """Colour probe on dataset frames, each stamped with its own colour from the tag's hash."""
-    frames = pairs.load_frames(cfg.data.name, cfg.colour.n, cfg.data.seed, cfg.get("cache_dir"))
+    frames = pairs.load_frames(cfg.data.name, cfg.colour.n, cfg.data.seed, cfg.paths.data)
     tag = PixelTag("episode", cfg.data.tag.size, cfg.data.tag.seed)
     return pairs.measure_colour(
         model, frames, tag, cfg.data.img_size, cfg.colour.kinds, cfg.colour.train_fraction, cfg.data.seed
@@ -37,7 +37,7 @@ def get_latents(cfg, model, latents_path):
 
     w = cfg.windows
     loader, target, episode, train = data.build(
-        cfg.data, cfg.targets, w.frames, w.min_frames, cfg.get("cache_dir")
+        cfg.data, cfg.targets, w.frames, w.min_frames, cfg.paths.data
     )
     names, angle, group = data.target_meta(cfg.targets)
     out = extract(
@@ -57,10 +57,10 @@ def get_latents(cfg, model, latents_path):
     return lat
 
 
-def run_dirs(policy):
+def run_dirs(policy, runs_root):
     """Results and checkpoint directories of ``policy``, a weights file or a run directory under the checkpoints root."""
-    run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), policy)
-    results_path = Path(swm.data.utils.get_cache_dir(), policy)
+    run_path = Path(swm.data.utils.get_cache_dir(runs_root, sub_folder="checkpoints"), policy)
+    results_path = Path(swm.data.utils.get_cache_dir(runs_root), policy)
     if run_path.is_dir():
         return results_path, run_path
     return results_path.parent, run_path.parent
@@ -71,12 +71,12 @@ def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
     off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
     cfg = OmegaConf.merge({"data": off}, cfg)
-    model = swm.wm.utils.load_pretrained(cfg.policy)
+    model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path, run_path = run_dirs(cfg.policy)
+    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
     if cfg.data.get("probe") is not None:
         saved = OmegaConf.load(run_path / "config.yaml")

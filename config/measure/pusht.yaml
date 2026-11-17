@@ -1,6 +1,11 @@
 defaults:
   - launcher: local
   - _self_
+  - optional /paths: local
+
+paths:
+  data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
+  runs: null # root for checkpoints/, spt/ and results; null = same default
 
 policy: ??? # checkpoint, resolved like eval.py
 latents_path: null # reuse saved latents instead of encoding

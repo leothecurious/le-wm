@@ -1,4 +1,3 @@
-import os
 from functools import partial
 from pathlib import Path
 
@@ -93,9 +92,8 @@ def run(cfg):
 
     dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
     dataset_name = dataset_cfg.pop("name")
-    cache_dir = os.environ.get("LOCAL_DATASET_DIR", None)
     dataset = swm.data.load_dataset(
-        dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
+        dataset_name, transform=None, cache_dir=cfg.paths.data, **dataset_cfg
     )
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     split_unit = cfg.get("split_unit", "clips")
@@ -133,7 +131,7 @@ def run(cfg):
     tag = PixelTag(**cfg.tag)
     pair_callbacks = []
     if cfg.pair.every_n_steps:
-        frames = load_frames(dataset_name, cfg.pair.n, seed=0, cache_dir=cache_dir)
+        frames = load_frames(dataset_name, cfg.pair.n, seed=0, cache_dir=cfg.paths.data)
         pair_callbacks.append(PairCallback(frames, tag, cfg.img_size, cfg.pair.every_n_steps))
     dataset = PixelNoise(**cfg.noise).wrap(tag.wrap(dataset))
 
@@ -172,7 +170,9 @@ def run(cfg):
     ##########################
 
     run_id = cfg.get("subdir") or ""
-    run_dir = Path(swm.data.utils.get_cache_dir(sub_folder='checkpoints'), run_id)
+    run_dir = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='checkpoints'), run_id)
+    # stable-pretraining writes its run registry and metrics.csv under <cache_dir>/runs; one cache per run keeps each findable by name
+    spt.set(cache_dir=str(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='spt') / run_id))
 
     if cfg.wandb.enabled:
         logger = WandbLogger(**cfg.wandb.config)
@@ -186,7 +186,7 @@ def run(cfg):
         OmegaConf.save(cfg, f)
 
     object_dump_callback = SaveCkptCallback(
-        run_name=cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
+        run_name=cfg.output_model_name, cfg=cfg.model, cache_dir=cfg.paths.runs, epoch_interval=1,
         step_interval=cfg.checkpoint.every_n_steps,
     )
 

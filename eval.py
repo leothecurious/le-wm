@@ -46,9 +46,9 @@ def get_episodes_length(dataset, episodes):
 
 
 def get_dataset(cfg, dataset_name):
-    dataset_path = Path(cfg.cache_dir or swm.data.utils.get_cache_dir())
+    dataset_path = Path(swm.data.utils.get_cache_dir(cfg.paths.data))
     if dataset_name.endswith(".lance"):
-        return swm.data.load_dataset(dataset_name, cache_dir=cfg.cache_dir)
+        return swm.data.load_dataset(dataset_name, cache_dir=dataset_path)
     dataset = swm.data.HDF5Dataset(
         dataset_name,
         keys_to_cache=cfg.dataset.keys_to_cache,
@@ -94,7 +94,7 @@ def run(cfg: DictConfig):
     random_policy = cfg.policy == "random"
     resolve_seed(
         tag_cfg,
-        None if random_policy else Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent,
+        None if random_policy else Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder="checkpoints"), cfg.policy).parent,
     )
     tag = PixelTag(**tag_cfg)
     transform = {
@@ -124,7 +124,7 @@ def run(cfg: DictConfig):
     policy = cfg.get("policy", "random")
 
     if policy != "random":
-        model = swm.wm.utils.load_pretrained(cfg.policy)
+        model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
         model = model.to("cuda")
         model = model.eval()
         model.requires_grad_(False)
@@ -139,7 +139,7 @@ def run(cfg: DictConfig):
         policy = swm.policy.RandomPolicy()
 
     results_path = (
-        Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+        Path(swm.data.utils.get_cache_dir(cfg.paths.runs), cfg.policy).parent
         if cfg.policy != "random"
         else Path(__file__).parent
     )
