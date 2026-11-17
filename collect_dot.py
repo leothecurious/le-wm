@@ -21,6 +21,8 @@ from stable_worldmodel.data.formats.hdf5 import HDF5Writer
 from torch.distributions import VonMises
 from omegaconf import OmegaConf
 
+from utils import rechunk_h5
+
 
 def render(pos, size, sigma):
     """Frames (..., size, size) in [0, 1] with a bump of peak 1 at pos (..., 2) = (x, y)."""
@@ -59,6 +61,7 @@ def run(cfg):
                     "state": pos[i].numpy().astype(np.float32),
                     "action": actions[i].numpy().astype(np.float32),
                 })
+    rechunk_h5(out)
     OmegaConf.save(cfg, out.with_suffix(".yaml"))
     print(out)
 

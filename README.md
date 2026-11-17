@@ -60,6 +60,8 @@ PATH="$HOME/.local/bin:$PATH" bash scripts/run.sh dot_grounded_clean train.py --
 uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt data.name=/absolute/path/dot_test.h5 data.probe.name=/absolute/path/dot_probe.h5
 ```
 
+`collect_dot.py` rechunks each recording after writing, because the library writer stores one row per HDF5 chunk, which makes loading slow and memory-hungry on large datasets.
+
 ### Moving-dot evaluation protocol
 
 The dot training config uses one observed frame per context and holds out whole

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import h5py
 import numpy as np
 import torch
 from stable_pretraining import data as dt
@@ -11,6 +12,45 @@ def get_img_preprocessor(source: str, target: str, img_size: int = 224):
     to_image = dt.transforms.ToImage(**imagenet_stats, source=source, target=target)
     resize = dt.transforms.Resize(img_size, source=source, target=target)
     return dt.transforms.Compose(to_image, resize)
+
+
+def rechunk_h5(path, rows=65536, chunk_bytes=1 << 20, block_bytes=1 << 26):
+    """Rewrite an HDF5Writer file in place with large chunks.
+
+    The writer gives every per-row column one-row chunks so that appending an episode is cheap. HDF5 then
+    keeps one chunk-index entry per row, which costs several KB of RAM per row once a column is read and
+    makes per-frame pixel reads slow. Columns with ndim > 2 (frames) get one episode per chunk when all
+    episodes share a length, else ``chunk_bytes`` worth of rows; every other column gets ``rows`` rows.
+    The copy goes to a sibling file, is compared with the original block by block, and then replaces it.
+    """
+    path = Path(path)
+    tmp = path.with_name(path.name + ".rechunk.tmp")
+    try:
+        with h5py.File(path, "r") as src, h5py.File(tmp, "w", libver="latest") as dst:
+            lengths = np.unique(src["ep_len"][:])
+            dst.attrs.update(src.attrs)
+            for name, d in src.items():
+                row_bytes = max(1, int(np.prod(d.shape[1:], dtype=np.int64)) * d.dtype.itemsize)
+                if d.ndim <= 2:
+                    n = rows
+                elif len(lengths) == 1:
+                    n = int(lengths[0])
+                else:
+                    n = chunk_bytes // row_bytes
+                n = max(1, min(n, d.shape[0]))
+                out = dst.create_dataset(
+                    name, shape=d.shape, maxshape=d.maxshape, dtype=d.dtype, chunks=(n, *d.shape[1:])
+                )
+                out.attrs.update(d.attrs)
+                block = n * max(1, block_bytes // (n * row_bytes))
+                for i in range(0, d.shape[0], block):
+                    out[i:i + block] = d[i:i + block]
+                for i in range(0, d.shape[0], block):
+                    if d[i:i + block].tobytes() != out[i:i + block].tobytes():
+                        raise RuntimeError(f"rechunk changed column {name!r} in rows {i}:{i + block}")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 class ZScoreNormalizer:

@@ -1,12 +1,16 @@
 """Guard against episode leakage and evaluation refitting train action statistics."""
 
+from pathlib import Path
+
 import h5py
 import numpy as np
 import pytest
 import stable_worldmodel as swm
 import torch
+from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
+import collect_dot
 from metrics import data
 from noise import PixelNoise
 from utils import get_column_normalizer, get_column_stats, split_episodes
@@ -110,3 +114,28 @@ def test_probe_and_test_use_separate_files_masks_and_noise(tmp_path):
     cfg.probe.name = str(alias)
     with pytest.raises(ValueError, match="dataset paths"):
         data.build(cfg, specs, 2, 2, cache_dir=tmp_path)
+
+
+def test_recording_is_rechunked_without_changing_its_contents(tmp_path):
+    path = tmp_path / "dot.h5"
+    with initialize_config_dir(str(Path(__file__).resolve().parents[1] / "config/collect"), version_base=None):
+        cfg = compose("dot", overrides=["episodes=5", f"name={path}"])
+    collect_dot.run.__wrapped__(cfg)
+
+    torch.manual_seed(cfg.seed)
+    frames, pos, actions = collect_dot.episodes(cfg, 5, torch.Generator().manual_seed(cfg.seed))
+    expected = {
+        "pixels": frames.reshape(-1, *frames.shape[2:]).numpy(),
+        "state": pos.reshape(-1, 2).numpy().astype(np.float32),
+        "action": actions.reshape(-1, 2).numpy().astype(np.float32),
+    }
+    with h5py.File(path) as f:
+        assert all(d.chunks[0] > 1 for d in f.values())
+        assert f["pixels"].chunks[0] == cfg.steps + 1
+        for name, array in expected.items():
+            np.testing.assert_array_equal(f[name][:], array)
+
+    ds = swm.data.HDF5Dataset(path=path, num_steps=cfg.steps + 1, keys_to_load=["pixels", "action"])
+    clip = ds[2]
+    np.testing.assert_array_equal(clip["pixels"].permute(0, 2, 3, 1).numpy(), frames[2].numpy())
+    np.testing.assert_array_equal(clip["action"].numpy(), actions[2].numpy())
