@@ -170,3 +170,15 @@ def test_null_seed_without_a_saved_tag_is_zero(tmp_path):
 def test_configs_default_to_the_string_off(path, key):
     # unquoted YAML 1.1 `off` loads as False
     assert OmegaConf.select(OmegaConf.load(path), key) == "off"
+
+
+def test_measure_finds_the_run_directory_from_a_weights_file_or_a_directory(tmp_path, monkeypatch):
+    from measure import run_dirs
+
+    monkeypatch.setenv("STABLEWM_HOME", str(tmp_path))
+    run = tmp_path / "checkpoints" / "run"
+    run.mkdir(parents=True)
+    for policy in ("run/weights_epoch_10.pt", "run"):
+        results_path, run_path = run_dirs(policy)
+        assert run_path == run
+        assert results_path == tmp_path / "run"

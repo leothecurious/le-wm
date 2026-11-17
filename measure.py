@@ -57,6 +57,15 @@ def get_latents(cfg, model, latents_path):
     return lat
 
 
+def run_dirs(policy):
+    """Results and checkpoint directories of ``policy``, a weights file or a run directory under the checkpoints root."""
+    run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), policy)
+    results_path = Path(swm.data.utils.get_cache_dir(), policy)
+    if run_path.is_dir():
+        return results_path, run_path
+    return results_path.parent, run_path.parent
+
+
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
@@ -67,8 +76,7 @@ def run(cfg: DictConfig):
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-    run_path = Path(swm.data.utils.get_cache_dir(sub_folder="checkpoints"), cfg.policy).parent
+    results_path, run_path = run_dirs(cfg.policy)
     resolve_seed(cfg.data.tag, run_path)
     if cfg.data.get("probe") is not None:
         saved = OmegaConf.load(run_path / "config.yaml")
