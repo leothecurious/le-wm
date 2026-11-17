@@ -10,7 +10,7 @@ from metrics.latents import Latents, extract
 
 
 class PixelEncoder(torch.nn.Module):
-    """Reads a position stored in a frame's channels; counts encoded frames."""
+    """Reads a position stored in a frame's channels."""
 
     def __init__(self):
         super().__init__()

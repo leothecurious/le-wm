@@ -14,7 +14,6 @@ import math
 from pathlib import Path
 
 import hydra
-import numpy as np
 import stable_worldmodel as swm
 import torch
 from stable_worldmodel.data.formats.hdf5 import HDF5Writer
@@ -58,8 +57,8 @@ def run(cfg):
             for i in range(len(frames)):
                 writer.write_episode({
                     "pixels": frames[i].numpy(),
-                    "state": pos[i].numpy().astype(np.float32),
-                    "action": actions[i].numpy().astype(np.float32),
+                    "state": pos[i].numpy(),
+                    "action": actions[i].numpy(),
                 })
     rechunk_h5(out)
     OmegaConf.save(cfg, out.with_suffix(".yaml"))

@@ -126,8 +126,8 @@ def test_recording_is_rechunked_without_changing_its_contents(tmp_path):
     frames, pos, actions = collect_dot.episodes(cfg, 5, torch.Generator().manual_seed(cfg.seed))
     expected = {
         "pixels": frames.reshape(-1, *frames.shape[2:]).numpy(),
-        "state": pos.reshape(-1, 2).numpy().astype(np.float32),
-        "action": actions.reshape(-1, 2).numpy().astype(np.float32),
+        "state": pos.reshape(-1, 2).numpy(),
+        "action": actions.reshape(-1, 2).numpy(),
     }
     with h5py.File(path) as f:
         assert all(d.chunks[0] > 1 for d in f.values())
