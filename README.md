@@ -47,14 +47,14 @@ Place the extracted `.h5` files under `<data>/datasets/`. The roots come from `c
 Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `<data>/datasets/pusht_expert_train.h5`.
 
 The moving-dot benchmark adapts [Sobal et al. (2022)](https://arxiv.org/abs/2211.10831),
-Section 3 and Appendices A.2/A.4, to LeWM. Record three independent datasets:
+Section 3 and Appendices A.2/A.4, to LeWM. Record three independent datasets under `<data>/datasets/` (`paths.data=...` selects another root):
 
 ```bash
-uv run collect_dot.py name=/absolute/path/dot_train.h5
-uv run collect_dot.py --config-name=dot_probe name=/absolute/path/dot_probe.h5
-uv run collect_dot.py --config-name=dot_test name=/absolute/path/dot_test.h5
-PATH="$HOME/.local/bin:$PATH" bash scripts/run.sh dot_grounded_clean train.py --config-name=lewm_grounded data=dot data.dataset.name=/absolute/path/dot_train.h5
-uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt data.name=/absolute/path/dot_test.h5 data.probe.name=/absolute/path/dot_probe.h5
+uv run collect_dot.py episodes=100000
+uv run collect_dot.py --config-name=dot_probe
+uv run collect_dot.py --config-name=dot_test
+bash scripts/run.sh dot_grounded_clean --config-name=lewm_grounded data=dot
+uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt
 ```
 
 `collect_dot.py` rechunks each recording after writing, because the library writer stores one row per HDF5 chunk, which makes loading slow and memory-hungry on large datasets.

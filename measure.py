@@ -97,7 +97,7 @@ def run(cfg: DictConfig):
             assert training_noise_seed not in (cfg.data.noise.seed, cfg.data.probe.noise_seed), (
                 "dot probe fitting and test must use noise seeds distinct from encoder training"
             )
-        datasets_dir = swm.data.utils.get_cache_dir(cfg.get("cache_dir"), sub_folder="datasets")
+        datasets_dir = swm.data.utils.get_cache_dir(cfg.paths.data, sub_folder="datasets")
         training_path = Path(datasets_dir, saved.data.dataset.name)
         for name in (cfg.data.name, cfg.data.probe.name):
             assert Path(datasets_dir, name).resolve() != Path(training_path).resolve(), (

@@ -2,7 +2,14 @@
 # Lengths are in units of the square's side. Geometry follows the reference code (vladisai/JEPA_SSL_NeurIPS_2022,
 # data/single.py) where it differs from the paper's text: its pixel values on a 28-px frame divided by 27, the
 # span of its pixel coordinates.
-name: dot_train.h5 # written to $STABLEWM_HOME/datasets/
+defaults:
+  - _self_
+  - optional /paths: local
+
+paths:
+  data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
+
+name: dot_train.h5 # written to <paths.data>/datasets/
 episodes: 10000
 seed: 0
 size: 32 # frame side in pixels; 28 in the paper, 32 here so the decoder's doublings reach it

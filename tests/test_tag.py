@@ -172,13 +172,12 @@ def test_configs_default_to_the_string_off(path, key):
     assert OmegaConf.select(OmegaConf.load(path), key) == "off"
 
 
-def test_measure_finds_the_run_directory_from_a_weights_file_or_a_directory(tmp_path, monkeypatch):
+def test_measure_finds_the_run_directory_from_a_weights_file_or_a_directory(tmp_path):
     from measure import run_dirs
 
-    monkeypatch.setenv("STABLEWM_HOME", str(tmp_path))
     run = tmp_path / "checkpoints" / "run"
     run.mkdir(parents=True)
     for policy in ("run/weights_epoch_10.pt", "run"):
-        results_path, run_path = run_dirs(policy)
+        results_path, run_path = run_dirs(policy, tmp_path)
         assert run_path == run
         assert results_path == tmp_path / "run"

@@ -51,7 +51,7 @@ def run(cfg):
     # VonMises samples from the global generator, so seed it along with the explicit one.
     torch.manual_seed(cfg.seed)
     generator = torch.Generator().manual_seed(cfg.seed)
-    out = Path(swm.data.utils.get_cache_dir(sub_folder="datasets"), cfg.name)
+    out = Path(swm.data.utils.get_cache_dir(cfg.paths.data, sub_folder="datasets"), cfg.name)
     with HDF5Writer(out, mode="error") as writer:
         for first in range(0, cfg.episodes, cfg.chunk):
             frames, pos, actions = episodes(cfg, min(cfg.chunk, cfg.episodes - first), generator)
