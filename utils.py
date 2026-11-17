@@ -44,9 +44,9 @@ def rechunk_h5(path, rows=65536, chunk_bytes=1 << 20, block_bytes=1 << 26):
                 out.attrs.update(d.attrs)
                 block = n * max(1, block_bytes // (n * row_bytes))
                 for i in range(0, d.shape[0], block):
-                    out[i:i + block] = d[i:i + block]
-                for i in range(0, d.shape[0], block):
-                    if d[i:i + block].tobytes() != out[i:i + block].tobytes():
+                    blk = d[i:i + block]
+                    out[i:i + block] = blk
+                    if out[i:i + block].tobytes() != blk.tobytes():
                         raise RuntimeError(f"rechunk changed column {name!r} in rows {i}:{i + block}")
         os.replace(tmp, path)
     finally:
@@ -86,12 +86,11 @@ def get_column_stats(dataset, source, episodes=None):
     if episodes is not None:
         col_data = np.concatenate([
             col_data[dataset.offsets[ep]:dataset.offsets[ep] + dataset.lengths[ep]]
-            for ep in sorted(set(episodes))
+            for ep in sorted(episodes)
         ])
     data = torch.from_numpy(col_data)
     data = data[~torch.isnan(data).any(dim=1)]
-    return {"mean": data.mean(0, keepdim=True).clone(),
-            "std": data.std(0, keepdim=True).clone()}
+    return {"mean": data.mean(0, keepdim=True), "std": data.std(0, keepdim=True)}
 
 
 def get_column_normalizer(dataset, source: str, target: str, stats=None):
