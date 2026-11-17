@@ -14,6 +14,7 @@ subdir: ${output_model_name}
 
 num_workers: 3
 train_split: 0.9
+split_unit: clips # clips | episodes; episodes holds out whole episodes and fits normalizers on train episodes only
 seed: 3072
 img_size: 224
 patch_size: 14 # ViT patch side in pixels
