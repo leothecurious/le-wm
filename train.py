@@ -25,10 +25,12 @@ def lewm_forward(self, batch, stage, cfg):
     embeddings decoded to the next frames, area-resized to the decoder's output.
     grounded: latent plus ``loss.beta`` times pixel. latent_twin: pixel plus
     ``loss.lam`` times the prediction error against a stop-gradient target. Every
-    kind logs the latent terms and, on validation, the error of copying the last
-    context embedding forward.
+    kind logs the latent terms and, on validation, the error of copying each
+    context embedding one step forward.
     """
     kind, ctx_len, n_preds = cfg.loss.kind, cfg.history_size, cfg.num_preds
+    if kind not in ("latent", "pixel", "grounded", "latent_twin"):
+        raise ValueError(kind)
 
     # Replace NaN values with 0 (occurs at sequence boundaries)
     batch["action"] = torch.nan_to_num(batch["action"], 0.0)
@@ -62,8 +64,6 @@ def lewm_forward(self, batch, stage, cfg):
         elif kind == "latent_twin":
             terms = {"latent": cfg.loss.lam * output["pred_loss"], "pixel": output["pixel_loss"]}
             output["loss"] = sum(terms.values())
-        else:
-            raise ValueError(kind)
 
     if stage == "validate":
         output["copy_loss"] = (emb[:, :ctx_len] - emb[:, n_preds:]).detach().pow(2).mean()
@@ -96,7 +96,7 @@ def run(cfg):
         dataset_name, transform=None, cache_dir=cfg.paths.data, **dataset_cfg
     )
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    split_unit = cfg.get("split_unit", "clips")
+    split_unit = cfg.split_unit
     if split_unit == "episodes":
         train_set, val_set = split_episodes(dataset, cfg.train_split, rnd_gen)
         train_episodes = {dataset.clip_indices[i][0] for i in train_set.indices}
