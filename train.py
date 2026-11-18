@@ -7,10 +7,11 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
 import torch.nn.functional as F
-from lightning.pytorch.loggers import CSVLogger, WandbLogger
+from lightning.pytorch.loggers import CSVLogger
 from omegaconf import OmegaConf, open_dict
 
 import dot
+import tracking
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg, grad_shares
 from noise import PixelNoise
@@ -202,16 +203,28 @@ def run(cfg):
     # stable-pretraining writes its run registry and metrics.csv under <cache_dir>/runs; one cache per run keeps each findable by name
     spt.set(cache_dir=str(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='spt') / run_id))
 
-    if cfg.wandb.enabled:
-        logger = WandbLogger(**cfg.wandb.config)
-        logger.log_hyperparams(OmegaConf.to_container(cfg))
-    else:
-        # metrics.csv next to the checkpoints, so every run keeps its training curve
-        logger = CSVLogger(save_dir=run_dir, name="", version="")
-
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "config.yaml", "w") as f:
         OmegaConf.save(cfg, f)
+
+    # metrics.csv next to the checkpoints, so every run keeps its training curve
+    loggers = [CSVLogger(save_dir=run_dir, name="", version="")]
+    callbacks = []
+    wb = None
+    if cfg.wandb.enabled:
+        commit, dirty = tracking.git_state()
+        wb = tracking.start(
+            cfg.wandb, name=cfg.output_model_name, run_id=run_id or cfg.output_model_name, job_type="train",
+            run_dir=run_dir, config={
+                **OmegaConf.to_container(cfg, resolve=True),
+                "provenance": {
+                    "git_commit": commit, "git_dirty": dirty,
+                    "seeds": {"seed": cfg.seed, "tag_seed": cfg.tag.seed, "noise_seed": cfg.noise.seed},
+                },
+            },
+        )
+        loggers.append(tracking.RunLogger(wb))
+        callbacks.append(tracking.CheckpointHashCallback(wb, run_dir))
 
     object_dump_callback = SaveCkptCallback(
         run_name=cfg.output_model_name, cfg=cfg.model, cache_dir=cfg.paths.runs, epoch_interval=1,
@@ -228,9 +241,10 @@ def run(cfg):
             GapCallback(),
             ResumeCkptCallback(ckpt_path),
             *pair_callbacks,
+            *callbacks,
         ],
         num_sanity_val_steps=1,
-        logger=logger,
+        logger=loggers,
         enable_checkpointing=True,
     )
 
@@ -243,8 +257,8 @@ def run(cfg):
         seed=cfg.seed,
     )
 
-    manager()
-    return
+    with tracking.finishing(wb):
+        manager()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+# Weights & Biases tracking (see tracking.py), always alongside the local CSV and JSON records.
+# Included by train and measure configs through the lewm search path.
+enabled: false # true: log to W&B and fail if the run cannot be opened
+entity: ${oc.env:WANDB_ENTITY,null}
+project: ${oc.env:WANDB_PROJECT,null}
+group: null # the study, e.g. dot2
+tags: []
+resume: allow # allow: create the run if it is new; must: continue an existing one
+label: null # names one measurement of a run so repeated ones keep their own keys (measure only)

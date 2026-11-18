@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - launcher: local
+  - /tracking@wandb: default
   - data: pusht
   - model: lewm
   - optional /paths: local # machine-specific roots; /paths resolves through hydra_plugins/lewm_searchpath.py
