@@ -1,7 +1,11 @@
 defaults:
   - launcher: local
+  - /tracking@wandb: default
   - _self_
   - optional /paths: local
+
+wandb:
+  resume: must # measure continues the training run
 
 paths:
   data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
