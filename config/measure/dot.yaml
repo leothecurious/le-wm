@@ -11,25 +11,16 @@ policy: ??? # checkpoint, resolved like eval.py
 latents_path: null # reuse saved latents instead of encoding
 
 data:
-  name: dot_test.h5
-  frameskip: 1
   img_size: 32
-  sampler: episodes # episodes | random_clips
-  start: episode_start # episode_start | any_start (episodes sampler)
-  n: 10000
-  seed: 0
   batch_size: 64
-  noise: # mode/alpha null resolve to the checkpoint's; seeds are independent across stages
+  generator: null # the checkpoint's data.generator; probe and test sequences are generated from the checkpoint's run seed
+  noise: # mode/alpha null resolve to the checkpoint's
     mode: null
     alpha: null
-    seed: null # resolved to training noise seed + 2
   probe:
-    name: dot_probe.h5
-    n: 10000
-    noise_seed: null # resolved to training noise seed + 1
-  num_workers: 3
-  columns: # expected widths of the target columns
-    - {column: state, dim: 2} # dot x, y
+    n: 10000 # sequences the readouts are fitted on
+  test:
+    n: 10000 # sequences the metrics are scored on
 
 windows:
   frames: 17 # a whole episode

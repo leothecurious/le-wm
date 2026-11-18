@@ -10,12 +10,13 @@ import torch.nn.functional as F
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
+import dot
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg, grad_shares
 from noise import PixelNoise
 from tag import PixelTag
 from utils import (get_column_normalizer, get_column_stats, get_img_preprocessor,
-                   split_episodes, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback)
+                   split_episodes, GapCallback, ResumeCkptCallback, RNGStateCallback, SaveCkptCallback)
 
 
 def lewm_forward(self, batch, stage, cfg):
@@ -78,18 +79,28 @@ def lewm_forward(self, batch, stage, cfg):
     return output
 
 
-@hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
-def run(cfg):
-    # Seed before building the model so weight init is reproducible too.
-    pl.seed_everything(cfg.seed, workers=True)
-    # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
-    # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
-    torch.utils.deterministic.fill_uninitialized_memory = False
+def generated_data(cfg):
+    """Loaders over moving-dot clips generated on the fly (dot.py). The epoch is ``steps_per_epoch`` fresh
+    batches of the training stream; validation is a fixed held-out set drawn from its own stream."""
+    gen, length, batch_size = cfg.data.generator, cfg.history_size + cfg.num_preds, cfg.loader.batch_size
+    assert cfg.tag.mode == "off" and not cfg.pair.every_n_steps, "generated dots have no tag or pair metric"
+    device = torch.device("cpu" if cfg.trainer.accelerator == "cpu" or not torch.cuda.is_available() else "cuda")
+    stats = dot.action_stats(gen, cfg.seed, device, gen.stats_sequences)
+    with open_dict(cfg):
+        cfg.data.action_normalizer = {key: value.flatten().tolist() for key, value in stats.items()}
+        cfg.model.action_encoder.input_dim = stats["mean"].numel()
+    train = dot.ClipStream(
+        gen, dot.Streams(cfg.seed, "train", device), stats, cfg.noise.mode, cfg.noise.alpha,
+        length, batch_size, gen.steps_per_epoch, gen.chunk,
+    )
+    val = dot.HeldOutClips(
+        gen, cfg.seed, device, stats, cfg.noise.mode, cfg.noise.alpha, length, batch_size, gen.val_sequences
+    )
+    return *(torch.utils.data.DataLoader(d, batch_size=None) for d in (train, val)), []
 
-    #########################
-    ##       dataset       ##
-    #########################
 
+def recorded_data(cfg):
+    """Loaders over a recorded HDF5 dataset, split by clip or by episode, and the pair callbacks."""
     dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
     dataset_name = dataset_cfg.pop("name")
     dataset = swm.data.load_dataset(
@@ -138,6 +149,22 @@ def run(cfg):
 
     train = torch.utils.data.DataLoader(train_set, **cfg.loader,shuffle=True, drop_last=True, generator=rnd_gen)
     val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)
+    return train, val, pair_callbacks
+
+
+@hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
+def run(cfg):
+    # Seed before building the model so weight init is reproducible too.
+    pl.seed_everything(cfg.seed, workers=True)
+    # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
+    # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
+    torch.utils.deterministic.fill_uninitialized_memory = False
+
+    #########################
+    ##       dataset       ##
+    #########################
+
+    train, val, pair_callbacks = (generated_data if cfg.data.get("generator") else recorded_data)(cfg)
     
     ##############################
     ##       model / optim      ##
@@ -198,6 +225,7 @@ def run(cfg):
         callbacks=[
             object_dump_callback,
             RNGStateCallback(train),
+            GapCallback(),
             ResumeCkptCallback(ckpt_path),
             *pair_callbacks,
         ],

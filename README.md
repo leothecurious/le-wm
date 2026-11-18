@@ -47,48 +47,39 @@ Place the extracted `.h5` files under `<data>/datasets/`. The roots come from `c
 Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `<data>/datasets/pusht_expert_train.h5`.
 
 The moving-dot benchmark adapts [Sobal et al. (2022)](https://arxiv.org/abs/2211.10831),
-Section 3 and Appendices A.2/A.4, to LeWM. Record three independent datasets under `<data>/datasets/` (`paths.data=...` selects another root):
+Section 3 and Appendices A.2/A.4, to LeWM. Sequences are generated on the fly (`dot.py`), as in the paper's
+code, so nothing is recorded and no sequence or noise pattern repeats:
 
 ```bash
-uv run collect_dot.py episodes=100000
-uv run collect_dot.py --config-name=dot_probe
-uv run collect_dot.py --config-name=dot_test
-bash scripts/run.sh dot_grounded_clean --config-name=lewm_grounded data=dot
+bash scripts/run.sh dot_grounded_clean --config-name=lewm_grounded data=dot_online
 uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt
 ```
 
-`collect_dot.py` rechunks each recording after writing, because the library writer stores one row per HDF5 chunk, which makes loading slow and memory-hungry on large datasets.
+### Moving-dot generation and evaluation protocol
 
-### Moving-dot evaluation protocol
+Every batch of the training stream is drawn fresh on the training device from generators that are
+independent of the model's RNG. Each stage (train, validation, probe, test) has its own geometry and noise
+generators, seeded from the run seed and the stage name, so objectives at one seed see identical
+sequences in the same order, and no two stages share a sequence or a noise pattern. Streams reproduce on
+the same device type. An epoch is `data.generator.steps_per_epoch` batches (11,250, the epoch of a recorded
+90,000-sequence training split). Validation is a fixed set of `data.generator.val_sequences` held-out
+sequences, regenerated from its seed at the start of each run, whose batches hold clips of distinct
+sequences like training batches. Each epoch logs the mean SIGReg and prediction loss on training batches
+and on validation, and their validation-to-training ratios (`gap/*` in `metrics.csv`); a SIGReg ratio well
+above 1 means the encoder fits the sequences it has seen. Action normalization is fitted on
+`data.generator.stats_sequences` sequences of its own stream and saved in the checkpoint's `config.yaml`.
 
-The dot training config uses one observed frame per context and holds out whole
-episodes for validation. No validation frame or episode-fixed noise pattern is
-shared with an encoder-training episode. Action normalization is fitted only on
-training episodes, saved in the checkpoint's `config.yaml`, and reused for both
-probe fitting and test.
-
-Uniform noise is fixed within an episode (`noise.mode=episode`) or redrawn per
-frame (`noise.mode=frame`). Set `noise.alpha` during training and the matching
-`data.noise.mode` and `data.noise.alpha` during measurement. Noise depends on
-local episode/frame IDs and a noise seed, not on dataset identity. By default,
-probe fitting uses the training noise seed plus 1 and test uses it plus 2.
-Measurement rejects shared dataset paths and reused stage noise seeds. Explicit
-measurement seeds may override those defaults, but must remain distinct. New
-trajectories and new noise are both required for this evaluation protocol.
+Uniform noise is fixed within a sequence (`noise.mode=episode`) or redrawn per frame (`noise.mode=frame`).
+Measurement regenerates the probe and test sequences from the checkpoint's geometry, run seed, noise mode and
+strength, and action normalizer, which are saved in its `config.yaml`; `data.noise.mode` and `data.noise.alpha`
+override the noise.
 
 The primary `rollout_probe` freezes the encoder and predictor, encodes only the
-first frame, and rolls forward with the recorded actions for all 16 transitions.
-One linear readout is fitted jointly to x and y on the separate probe dataset.
-It scores all 17 time steps on the separate test dataset, reporting Euclidean
+first frame, and rolls forward with the true actions for all 16 transitions.
+One linear readout is fitted jointly to x and y on `data.probe.n` probe sequences.
+It scores all 17 time steps on `data.test.n` test sequences, reporting Euclidean
 position RMSE per time step and their arithmetic mean, in units of the square's
 side. Pooled RMSE and a fixed center predictor are also reported.
-
-The default recordings contain 10,000 episodes per stage. The paper's sizes are
-overrides: `collect_dot.py episodes=1000000` for training,
-`--config-name=dot_probe episodes=300000` for the probe set (the test set keeps
-10,000), and `data.probe.n=300000` in `measure.py`. At these sizes the recorded
-RGB data and saved latents consume substantial disk and RAM. Dataset-sidecar
-YAML files retain collection settings and seeds.
 
 Intentional adaptations: LeWM's ViT and action-conditioned transformer replace
 the paper's CNN and recurrent predictor; frames are 32 by 32 rather than 28 by
@@ -98,10 +89,10 @@ one-step training, and the roadmap's latent, pixel, grounded and latent-twin
 objectives. The paper trains on full sequences and uses a linear probe trained
 by gradient descent; our linear readout uses least squares. Dot geometry follows
 the reference code where it differs from the paper's text (see
-`config/collect/dot.yaml`). Dataset/noise seeds are explicit project choices.
+`config/train/data/dot_online.yaml`).
 
 - The encoder and predictor have 17.9M parameters (26.7M with the pixel decoder), against about 1.18M in the paper.
-- Training runs 10 epochs over a fixed 100k-sequence set (about 11k steps per epoch), whereas the paper streams about 1M fresh sequences once.
+- Training runs 10 epochs of 11,250 steps, each batch fresh, whereas the paper streams about 1M fresh sequences once.
 - RMSE is Euclidean over (x, y); compare r, the rollout RMSE over the centre-predictor RMSE.
 
 `trainer.max_epochs` sets the learning-rate schedule's full budget. A two-epoch

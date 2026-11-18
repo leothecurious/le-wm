@@ -15,6 +15,11 @@ import torch
 from tag import stamp_clips
 
 
+def blend(pixels, z, alpha):
+    """(pixels + alpha * 255 * z) / (1 + alpha), rounded to uint8, for uint8 ``pixels`` and noise ``z`` in [0, 1]."""
+    return ((pixels.float() + alpha * 255 * z) / (1 + alpha)).round().to(torch.uint8)
+
+
 class PixelNoise:
     def __init__(self, mode="off", alpha=0.0, seed=0):
         self.mode = mode
@@ -36,8 +41,7 @@ class PixelNoise:
             z = self.pattern(h, w, int(episode))[None]
         else:
             z = torch.stack([self.pattern(h, w, int(episode), int(start) + i * frameskip) for i in range(t)])
-        noisy = (pixels.float() + self.alpha * 255 * z) / (1 + self.alpha)
-        pixels.copy_(noisy.round().to(torch.uint8))
+        pixels.copy_(blend(pixels, z, self.alpha))
         return pixels
 
     def wrap(self, dataset):

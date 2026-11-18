@@ -63,34 +63,25 @@ def run_dirs(policy, runs_root):
     return results_path.parent, run_path.parent
 
 
-def resolve_probe_protocol(cfg, run_path):
-    """Fill cfg.data's noise settings and action normalizer from the checkpoint's config, and check that the stages stay independent."""
+def resolve_generated(cfg, run_path):
+    """Fill cfg.data's generator, run seed, noise settings and action normalizer from the checkpoint's config.
+
+    Probe and test sequences are regenerated from the run seed's own streams, never the training stream, so
+    nothing is stored and no sequence or noise pattern is shared with training.
+    """
     saved = OmegaConf.load(run_path / "config.yaml")
     assert saved.history_size == 1, (
         "the dot rollout protocol requires a model trained with history_size=1"
     )
     assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
-    training_noise_seed = int(saved.noise.seed)
-    if cfg.data.noise.mode is None:
-        cfg.data.noise.mode = saved.noise.mode
-    if cfg.data.noise.alpha is None:
-        cfg.data.noise.alpha = saved.noise.alpha
-    if cfg.data.noise.seed is None:
-        cfg.data.noise.seed = training_noise_seed + 2
-    if cfg.data.probe.noise_seed is None:
-        cfg.data.probe.noise_seed = training_noise_seed + 1
-    if cfg.data.noise.mode != "off":
-        assert training_noise_seed not in (cfg.data.noise.seed, cfg.data.probe.noise_seed), (
-            "dot probe fitting and test must use noise seeds distinct from encoder training"
-        )
-    datasets_dir = swm.data.utils.get_cache_dir(cfg.paths.data, sub_folder="datasets")
-    training_path = Path(datasets_dir, saved.data.dataset.name)
-    for name in (cfg.data.name, cfg.data.probe.name):
-        assert Path(datasets_dir, name).resolve() != training_path.resolve(), (
-            "dot probe fitting and test require datasets separate from encoder training"
-        )
     with open_dict(cfg):
+        cfg.data.generator = saved.data.generator
         cfg.data.action_normalizer = saved.data.action_normalizer
+        cfg.data.seed = saved.seed
+        if cfg.data.noise.mode is None:
+            cfg.data.noise.mode = saved.noise.mode
+        if cfg.data.noise.alpha is None:
+            cfg.data.noise.alpha = saved.noise.alpha
 
 
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
@@ -105,8 +96,8 @@ def run(cfg: DictConfig):
 
     results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
-    if cfg.data.get("probe") is not None:
-        resolve_probe_protocol(cfg, run_path)
+    if "generator" in cfg.data:
+        resolve_generated(cfg, run_path)
     else:
         resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
 
+import dot
 from noise import PixelNoise
 from tag import PixelTag
 from utils import get_column_normalizer, get_img_preprocessor
@@ -156,8 +157,50 @@ def _sample(cfg, columns, num_frames, min_frames, cache_dir):
     return ds, windows
 
 
+class GeneratedWindows:
+    """Batches of whole generated sequences, preprocessed like training frames on the device they were
+    generated on. Actions and the valid mask stay on the CPU, where ``extract`` collects them."""
+
+    def __init__(self, frames, action, batch_size, img_size):
+        self.frames, self.action, self.batch_size = frames, action, batch_size
+        self.preprocess = get_img_preprocessor("pixels", "pixels", img_size)
+
+    def __len__(self):
+        return -(-len(self.frames) // self.batch_size)
+
+    def __iter__(self):
+        for i in range(0, len(self.frames), self.batch_size):
+            frame, action = self.frames[i:i + self.batch_size], self.action[i:i + self.batch_size]
+            pixels = frame[:, :, None].expand(-1, -1, 3, -1, -1).contiguous()
+            yield {
+                "pixels": self.preprocess({"pixels": pixels})["pixels"],
+                "action": torch.nan_to_num(action, 0.0).cpu(),
+                "valid": torch.ones(frame.shape[:2], dtype=torch.bool),
+            }
+
+
+def build_generated(cfg, specs):
+    """Loader, targets, episode ids and probe-train mask of generated sequences: ``probe.n`` from the
+    ``probe`` stream followed by ``test.n`` from the ``test`` stream, whose windows are whole sequences.
+    Stages are drawn from the run seed ``cfg.seed`` and share nothing with training."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    mean, std = (torch.tensor(cfg.action_normalizer[k], device=device).reshape(1, 1, -1) for k in ("mean", "std"))
+    counts = {"probe": cfg.probe.n, "test": cfg.test.n}
+    frames, actions, states = [], [], []
+    for stage, n in counts.items():
+        f, state, action = dot.sequences(cfg.generator, n, dot.Streams(cfg.seed, stage, device), cfg.noise.mode, cfg.noise.alpha)
+        frames.append(f), states.append(state), actions.append((action - mean) / std)
+    assert {s.column for s in specs} == {"state"}, "generated sequences have one target column, state"
+    targets = torch.cat(states)[..., [s.get("index", 0) for s in specs]].double().cpu().numpy()
+    loader = GeneratedWindows(torch.cat(frames), torch.cat(actions), cfg.batch_size, cfg.img_size)
+    train_mask = np.arange(sum(counts.values())) < cfg.probe.n
+    return loader, targets, np.arange(len(train_mask)), train_mask
+
+
 def build(cfg, specs, num_frames, min_frames, cache_dir=None):
     """Loader over sampled windows; separate probe/test files when configured."""
+    if cfg.get("generator") is not None:
+        return build_generated(cfg, specs)
     columns = sorted({s.column for s in specs})
     if cfg.get("probe") is not None:
         probe_cfg = deepcopy(cfg)

@@ -120,8 +120,8 @@ class ResumeCkptCallback(Callback):
 
 
 class RNGStateCallback(Callback):
-    """Checkpoint the shuffle generator and the global torch RNGs, which
-    Lightning checkpoints omit. States are saved at epoch end.
+    """Checkpoint the shuffle generator (or, for a generated dataset, its streams) and the global
+    torch RNGs, which Lightning checkpoints omit. States are saved at epoch end.
 
     Each new DataLoader iterator draws its workers' base seed from the shuffle
     generator. With persistent workers a resumed run builds one more iterator
@@ -132,11 +132,12 @@ class RNGStateCallback(Callback):
     def __init__(self, train_loader: torch.utils.data.DataLoader):
         super().__init__()
         self.train_loader = train_loader
-        self.data_generator = train_loader.sampler.generator
+        self.generated = hasattr(train_loader.dataset, "streams")
+        self.data_generator = None if self.generated else train_loader.sampler.generator
 
     def state_dict(self):
         state = {
-            "data_generator": self.data_generator.get_state(),
+            "data_generator": self.train_loader.dataset.state_dict() if self.generated else self.data_generator.get_state(),
             "torch": torch.get_rng_state(),
         }
         if torch.cuda.is_available():
@@ -144,7 +145,10 @@ class RNGStateCallback(Callback):
         return state
 
     def load_state_dict(self, state_dict):
-        self.data_generator.set_state(state_dict["data_generator"])
+        if self.generated:
+            self.train_loader.dataset.load_state_dict(state_dict["data_generator"])
+        else:
+            self.data_generator.set_state(state_dict["data_generator"])
         if self.train_loader.persistent_workers and self.train_loader.num_workers > 0:
             self.train_loader.generator = torch.Generator()
         torch.set_rng_state(state_dict["torch"])
@@ -186,3 +190,40 @@ class SaveCkptCallback(Callback):
             filename=f'weights_{name}.pt',
             cache_dir=self.cache_dir,
         )
+
+class GapCallback(Callback):
+    """Logs each epoch's mean SIGReg and prediction loss on training batches and on validation, and
+    their validation-to-training ratios. A ratio well above 1 means the encoder fits what it has seen
+    rather than what the data generates. Training batches are in train mode (dropout on), validation in eval mode."""
+
+    KEYS = ("sigreg_loss", "pred_loss")
+
+    def __init__(self):
+        super().__init__()
+        self.reset()
+
+    def reset(self):
+        self.sums = {s: {k: 0.0 for k in self.KEYS} for s in ("train", "val")}
+        self.counts = {"train": 0, "val": 0}
+
+    def _add(self, stage, outputs):
+        for k in self.KEYS:
+            self.sums[stage][k] = self.sums[stage][k] + outputs[k].detach().float()
+        self.counts[stage] += 1
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self._add("train", outputs)
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if not trainer.sanity_checking:
+            self._add("val", outputs)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        mean = {s: {k: v / max(self.counts[s], 1) for k, v in self.sums[s].items()} for s in self.sums}
+        for k in self.KEYS:
+            name = k.removesuffix("_loss")
+            pl_module.log(f"gap/{name}_train", mean["train"][k], sync_dist=True)
+            if self.counts["val"]:
+                pl_module.log(f"gap/{name}_val", mean["val"][k], sync_dist=True)
+                pl_module.log(f"gap/{name}_val_over_train", mean["val"][k] / mean["train"][k], sync_dist=True)
+        self.reset()
