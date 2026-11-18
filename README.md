@@ -105,20 +105,31 @@ noise setting separately.
 
 `jepa.py` contains the PyTorch implementation of LeWM. Training is configured via [Hydra](https://hydra.cc/) config files under `config/train/`.
 
-Before training, set your WandB `entity` and `project` in `config/train/lewm.yaml`:
-```yaml
-wandb:
-  config:
-    entity: your_entity
-    project: your_project
-```
-
 To launch training:
 ```bash
 uv run train.py data=pusht
 ```
 
 Checkpoints are saved to `<runs>/checkpoints/<subdir>`, and `metrics.csv` to `<runs>/spt/<subdir>/runs`.
+
+### Weights & Biases
+
+Off by default. `wandb.enabled=true` logs to W&B in addition to the local files, which stay the durable record
+(`metrics.csv` under `<runs>/spt/<subdir>/runs`, `dot_metrics.jsonl` and the like next to the results). Entity and
+project come from `WANDB_ENTITY` and `WANDB_PROJECT`. The run is named after `output_model_name`, its id is `subdir`,
+`wandb.group` is the study (for example `dot2`) and `wandb.tags` are free tags. A run that cannot be opened, a
+missing entity or project, `WANDB_MODE=disabled` and a mode other than the one in the environment all abort before
+training starts. Offline logging needs `WANDB_MODE=offline` set explicitly; its files are written under
+`<runs>/checkpoints/<subdir>/wandb` and uploaded with `wandb sync`.
+
+```bash
+WANDB_ENTITY=... WANDB_PROJECT=... bash scripts/run.sh dot2_latent_off_seed0 data=dot_online wandb.enabled=true wandb.group=dot2
+```
+
+`measure.py` resumes the training run by its id (`wandb.resume=must`), so the curve and the measured numbers share
+one run, and fails if that run does not exist. Measuring one run twice (a different noise, an earlier epoch) under
+one set of keys overwrites the first; set `wandb.label=<name>` to keep both. The key namespaces are listed in the
+docstring of `tracking.py`.
 
 For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
 
