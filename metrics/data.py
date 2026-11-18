@@ -5,9 +5,6 @@ every ``frameskip`` rows from ``start``, with the actions between them, as in
 training. Windows shorter than the requested length are padded and masked.
 """
 
-from copy import deepcopy
-from pathlib import Path
-
 import numpy as np
 import stable_pretraining as spt
 import stable_worldmodel as swm
@@ -198,40 +195,15 @@ def build_generated(cfg, specs):
 
 
 def build(cfg, specs, num_frames, min_frames, cache_dir=None):
-    """Loader over sampled windows; separate probe/test files when configured."""
+    """Loader over sampled windows, or over generated sequences when ``cfg.generator`` is set."""
     if cfg.get("generator") is not None:
         return build_generated(cfg, specs)
     columns = sorted({s.column for s in specs})
-    if cfg.get("probe") is not None:
-        probe_cfg = deepcopy(cfg)
-        probe_cfg.name = cfg.probe.name
-        probe_cfg.n = cfg.probe.n
-        probe_cfg.noise.seed = cfg.probe.noise_seed
-        if cfg.noise.mode != "off" and probe_cfg.noise.seed == cfg.noise.seed:
-            raise ValueError("probe and test noise seeds must differ")
-        probe_ds, probe_windows = _sample(probe_cfg, columns, num_frames, min_frames, cache_dir)
-        ds, windows = _sample(cfg, columns, num_frames, min_frames, cache_dir)
-        if Path(probe_ds.h5_path).resolve() == Path(ds.h5_path).resolve():
-            raise ValueError("probe and test must use different dataset paths")
-        samples = torch.utils.data.ConcatDataset([
-            Windows(probe_ds, probe_windows, num_frames), Windows(ds, windows, num_frames)
-        ])
-        targets = np.concatenate([
-            window_targets(probe_ds, probe_windows, num_frames, specs),
-            window_targets(ds, windows, num_frames, specs),
-        ])
-        episodes = np.array(
-            [w[0] for w in probe_windows] + [w[0] + len(probe_ds.lengths) for w in windows]
-        )
-        train_mask = np.concatenate([
-            np.ones(len(probe_windows), dtype=bool), np.zeros(len(windows), dtype=bool)
-        ])
-    else:
-        ds, windows = _sample(cfg, columns, num_frames, min_frames, cache_dir)
-        samples = Windows(ds, windows, num_frames)
-        targets = window_targets(ds, windows, num_frames, specs)
-        episodes = np.array([w[0] for w in windows])
-        train_mask = split_episodes(windows, cfg.train_fraction, cfg.seed)
+    ds, windows = _sample(cfg, columns, num_frames, min_frames, cache_dir)
+    samples = Windows(ds, windows, num_frames)
+    targets = window_targets(ds, windows, num_frames, specs)
+    episodes = np.array([w[0] for w in windows])
+    train_mask = split_episodes(windows, cfg.train_fraction, cfg.seed)
     loader = torch.utils.data.DataLoader(
         samples,
         batch_size=cfg.batch_size,

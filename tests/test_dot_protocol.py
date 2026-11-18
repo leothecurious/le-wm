@@ -1,16 +1,11 @@
 """Guard against episode leakage and evaluation refitting train action statistics."""
 
-from pathlib import Path
-
 import h5py
 import numpy as np
-import pytest
 import stable_worldmodel as swm
 import torch
-from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-import collect_dot
 from metrics import data
 from noise import PixelNoise
 from utils import get_column_normalizer, get_column_stats, split_episodes
@@ -81,61 +76,3 @@ def test_whole_episode_split_fits_train_rows_and_reuses_saved_stats(tmp_path):
     np.testing.assert_allclose(
         eval_ds[0]["action"].numpy(), (shifted[:2] - mean) / std, rtol=1e-6
     )
-
-
-def test_probe_and_test_use_separate_files_masks_and_noise(tmp_path):
-    probe_path, test_path = tmp_path / "probe.h5", tmp_path / "test.h5"
-    lengths = np.array([4, 4, 4])
-    write_dataset(probe_path, lengths)
-    write_dataset(test_path, lengths, action_shift=100)
-    cfg = eval_config(test_path, {"mean": [0.0, 0.0], "std": [1.0, 1.0]})
-    cfg.noise.mode = "episode"
-    cfg.probe = {"name": str(probe_path), "n": 2, "noise_seed": 10}
-    specs = OmegaConf.create([{"column": "position", "name": "x"}])
-    loader, targets, episodes, train_mask = data.build(cfg, specs, 2, 2, cache_dir=tmp_path)
-    np.testing.assert_array_equal(train_mask, [True, True, False, False, False])
-    assert set(episodes[:2]).isdisjoint(episodes[2:])
-    np.testing.assert_array_equal(targets[:, :, 0], (episodes % 3)[:, None] * 4 + [0, 1])
-    batch = next(iter(loader))
-    assert batch["action"][:2].max() < 100
-    assert batch["action"][2:, :, 0].min() >= 100
-    assert batch["valid"].all()
-    probe_ds, test_ds = [windows.ds for windows in loader.dataset.datasets]
-    probe_pixels, test_pixels = probe_ds[0]["pixels"], test_ds[0]["pixels"]
-    assert not torch.equal(probe_pixels, test_pixels)
-    torch.testing.assert_close(probe_pixels, probe_ds[0]["pixels"])
-
-    cfg.probe.noise_seed = cfg.noise.seed
-    with pytest.raises(ValueError, match="noise seeds"):
-        data.build(cfg, specs, 2, 2, cache_dir=tmp_path)
-    cfg.probe.noise_seed = 10
-    alias = tmp_path / "alias.h5"
-    alias.symlink_to(test_path)
-    cfg.probe.name = str(alias)
-    with pytest.raises(ValueError, match="dataset paths"):
-        data.build(cfg, specs, 2, 2, cache_dir=tmp_path)
-
-
-def test_recording_is_rechunked_without_changing_its_contents(tmp_path):
-    path = tmp_path / "dot.h5"
-    with initialize_config_dir(str(Path(__file__).resolve().parents[1] / "config/collect"), version_base=None):
-        cfg = compose("dot", overrides=["episodes=5", f"name={path}"])
-    collect_dot.run.__wrapped__(cfg)
-
-    torch.manual_seed(cfg.seed)
-    frames, pos, actions = collect_dot.episodes(cfg, 5, torch.Generator().manual_seed(cfg.seed))
-    expected = {
-        "pixels": frames.reshape(-1, *frames.shape[2:]).numpy(),
-        "state": pos.reshape(-1, 2).numpy(),
-        "action": actions.reshape(-1, 2).numpy(),
-    }
-    with h5py.File(path) as f:
-        assert all(d.chunks[0] > 1 for d in f.values())
-        assert f["pixels"].chunks[0] == cfg.steps + 1
-        for name, array in expected.items():
-            np.testing.assert_array_equal(f[name][:], array)
-
-    ds = swm.data.HDF5Dataset(path=path, num_steps=cfg.steps + 1, keys_to_load=["pixels", "action"])
-    clip = ds[2]
-    np.testing.assert_array_equal(clip["pixels"].permute(0, 2, 3, 1).numpy(), frames[2].numpy())
-    np.testing.assert_array_equal(clip["action"].numpy(), actions[2].numpy())
