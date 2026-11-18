@@ -5,7 +5,7 @@ from pathlib import Path
 import hydra
 import stable_worldmodel as swm
 import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from metrics import data, pairs, predictor, suite
 from metrics.latents import Latents, extract
@@ -40,7 +40,7 @@ def get_latents(cfg, model, latents_path):
         cfg.data, cfg.targets, w.frames, w.min_frames, cfg.paths.data
     )
     names, angle, group = data.target_meta(cfg.targets)
-    out = extract(model, loader, w.precision)
+    out = extract(model, loader, w.precision, rollout=w.get("rollout", False))
     lat = Latents(
         **out,
         target=torch.from_numpy(target),
@@ -54,18 +54,52 @@ def get_latents(cfg, model, latents_path):
     return lat
 
 
+def run_dirs(policy, runs_root):
+    """Results and checkpoint directories of ``policy``, a weights file or a run directory under the checkpoints root."""
+    run_path = Path(swm.data.utils.get_cache_dir(runs_root, sub_folder="checkpoints"), policy)
+    results_path = Path(swm.data.utils.get_cache_dir(runs_root), policy)
+    if run_path.is_dir():
+        return results_path, run_path
+    return results_path.parent, run_path.parent
+
+
+def resolve_generated(cfg, run_path):
+    """Fill cfg.data's generator, run seed, noise settings and action normalizer from the checkpoint's config.
+
+    Probe and test sequences are regenerated from the run seed's own streams, never the training stream, so
+    nothing is stored and no sequence or noise pattern is shared with training.
+    """
+    saved = OmegaConf.load(run_path / "config.yaml")
+    assert saved.history_size == 1, (
+        "the dot rollout protocol requires a model trained with history_size=1"
+    )
+    assert saved.num_preds == 1, "the dot rollout protocol requires one-step prediction"
+    with open_dict(cfg):
+        cfg.data.generator = saved.data.generator
+        cfg.data.action_normalizer = saved.data.action_normalizer
+        cfg.data.seed = saved.seed
+        if cfg.data.noise.mode is None:
+            cfg.data.noise.mode = saved.noise.mode
+        if cfg.data.noise.alpha is None:
+            cfg.data.noise.alpha = saved.noise.alpha
+
+
 @hydra.main(version_base=None, config_path="./config/measure", config_name="pusht")
 def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
-    cfg = OmegaConf.merge({"data": {"tag": {"mode": "off", "size": 5, "seed": None}}}, cfg)
+    off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
+    cfg = OmegaConf.merge({"data": off}, cfg)
     model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path = Path(swm.data.utils.get_cache_dir(cfg.paths.runs), cfg.policy).parent
-    run_path = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder="checkpoints"), cfg.policy).parent
+    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
+    if "generator" in cfg.data:
+        resolve_generated(cfg, run_path)
+    else:
+        resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"

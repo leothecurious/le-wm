@@ -1,0 +1,9 @@
+# The pixel twin plus lam times LeWM's prediction error against a stop-gradient target.
+defaults:
+  - lewm
+  - override model: lewm_pixel
+  - _self_
+
+loss:
+  kind: latent_twin
+  lam: 1.0

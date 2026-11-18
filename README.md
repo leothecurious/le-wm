@@ -46,6 +46,61 @@ Place the extracted `.h5` files under `<data>/datasets/`. The roots come from `c
 
 Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `<data>/datasets/pusht_expert_train.h5`.
 
+The moving-dot benchmark adapts [Sobal et al. (2022)](https://arxiv.org/abs/2211.10831),
+Section 3 and Appendices A.2/A.4, to LeWM. Sequences are generated on the fly (`dot.py`), as in the paper's
+code, so nothing is recorded and no sequence or noise pattern repeats:
+
+```bash
+bash scripts/run.sh dot_grounded_clean --config-name=lewm_grounded data=dot_online
+uv run measure.py --config-name=dot policy=dot_grounded_clean/weights_epoch_10.pt
+```
+
+### Moving-dot generation and evaluation protocol
+
+Every batch of the training stream is drawn fresh on the training device from generators that are
+independent of the model's RNG. Each stage (train, validation, probe, test) has its own geometry and noise
+generators, seeded from the run seed and the stage name, so objectives at one seed see identical
+sequences in the same order, and no two stages share a sequence or a noise pattern. Streams reproduce on
+the same device type. An epoch is `data.generator.steps_per_epoch` batches (11,250, the epoch of a recorded
+90,000-sequence training split). Validation is a fixed set of `data.generator.val_sequences` held-out
+sequences, regenerated from its seed at the start of each run, whose batches hold clips of distinct
+sequences like training batches. Each epoch logs the mean SIGReg and prediction loss on training batches
+and on validation, and their validation-to-training ratios (`gap/*` in `metrics.csv`); a SIGReg ratio well
+above 1 means the encoder fits the sequences it has seen. Action normalization is fitted on
+`data.generator.stats_sequences` sequences of its own stream and saved in the checkpoint's `config.yaml`.
+
+Uniform noise is fixed within a sequence (`noise.mode=episode`) or redrawn per frame (`noise.mode=frame`).
+Measurement regenerates the probe and test sequences from the checkpoint's geometry, run seed, noise mode and
+strength, and action normalizer, which are saved in its `config.yaml`; `data.noise.mode` and `data.noise.alpha`
+override the noise.
+
+The primary `rollout_probe` freezes the encoder and predictor, encodes only the
+first frame, and rolls forward with the true actions for all 16 transitions.
+One linear readout is fitted jointly to x and y on `data.probe.n` probe sequences.
+It scores all 17 time steps on `data.test.n` test sequences, reporting Euclidean
+position RMSE per time step and their arithmetic mean, in units of the square's
+side. Pooled RMSE and a fixed center predictor are also reported.
+
+Intentional adaptations: LeWM's ViT and action-conditioned transformer replace
+the paper's CNN and recurrent predictor; frames are 32 by 32 rather than 28 by
+28, replicated to RGB and quantized to uint8. Noise is blended by dividing by
+`1 + alpha` to retain that storage range. We keep LeWM image preprocessing,
+one-step training, and the roadmap's latent, pixel, grounded and latent-twin
+objectives. The paper trains on full sequences and uses a linear probe trained
+by gradient descent; our linear readout uses least squares. Dot geometry follows
+the reference code where it differs from the paper's text (see
+`config/train/data/dot_online.yaml`).
+
+- The encoder and predictor have 17.9M parameters (26.7M with the pixel decoder), against about 1.18M in the paper.
+- Training runs 10 epochs of 11,250 steps, each batch fresh, whereas the paper streams about 1M fresh sequences once.
+- RMSE is Euclidean over (x, y); compare r, the rollout RMSE over the centre-predictor RMSE.
+
+`trainer.max_epochs` sets the learning-rate schedule's full budget. A two-epoch
+run has its own warmup and decay, rather than taking the first two epochs of a
+longer schedule. Hyperparameters selected
+on clean frames are a transfer experiment; the paper's main results tune each
+noise setting separately.
+
 ## Training
 
 `jepa.py` contains the PyTorch implementation of LeWM. Training is configured via [Hydra](https://hydra.cc/) config files under `config/train/`.

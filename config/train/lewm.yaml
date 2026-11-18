@@ -14,8 +14,11 @@ subdir: ${output_model_name}
 
 num_workers: 3
 train_split: 0.9
+split_unit: clips # clips | episodes; episodes holds out whole episodes and fits normalizers on train episodes only
 seed: 3072
 img_size: 224
+patch_size: 14 # ViT patch side in pixels
+decoder_size: 64 # side of the frames pixel objectives decode to; their targets are resized to it
 embed_dim: 192
 history_size: 3
 
@@ -47,6 +50,12 @@ tag:
   size: 5
   seed: ${seed}
 
+# uniform noise blended over every frame, mode off | episode | frame (see noise.py)
+noise:
+  mode: "off"
+  alpha: 0.0
+  seed: ${seed}
+
 # pair cosines of n tagged frames, logged every this many steps (null = off)
 pair:
   every_n_steps: null
@@ -57,6 +66,8 @@ checkpoint:
   every_n_steps: null
 
 loss:
+  kind: latent # latent | pixel | grounded | latent_twin, see lewm_forward in train.py
+  grad_share_every: 50 # steps between gradient-share measurements (grounded and latent_twin)
   sigreg:
     weight: 0.09
     kwargs:

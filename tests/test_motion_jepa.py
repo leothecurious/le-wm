@@ -6,7 +6,7 @@ from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
 
 from module import SIGReg
-from train import lejepa_forward
+from train import lewm_forward
 
 
 def test_training_loss_includes_motion_and_backpropagates_through_both_branches():
@@ -20,7 +20,7 @@ def test_training_loss_includes_motion_and_backpropagates_through_both_branches(
     model = instantiate(cfg.model).train()
     batch = {"pixels": torch.randn(2, 4, 3, 28, 28), "action": torch.randn(2, 4, 10)}
     trainer = SimpleNamespace(model=model, sigreg=SIGReg(**cfg.loss.sigreg.kwargs), log_dict=lambda *a, **k: None)
-    output = lejepa_forward(trainer, batch, "fit", cfg)
+    output = lewm_forward(trainer, batch, "fit", cfg)
     base = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
     motion = (cfg.loss.motion.diff_pred_weight * output["diff_pred_loss"]
               + cfg.loss.motion.diff_sigreg_weight * output["diff_sigreg_loss"])

@@ -7,6 +7,7 @@ import stable_worldmodel as swm
 import torch
 from omegaconf import OmegaConf
 
+from noise import PixelNoise
 from tag import EvalTag, PixelTag, resolve_seed
 
 
@@ -97,6 +98,22 @@ def test_off_leaves_the_dataset_alone_and_other_readers_are_rejected(tmp_path):
         PixelTag("episode").wrap(object())
 
 
+def test_noise_is_fixed_within_an_episode_or_redrawn_every_frame_and_stacks_with_the_tag(tmp_path):
+    episode = PixelNoise("episode", alpha=3.0).wrap(PixelTag("episode").wrap(toy_dataset(tmp_path)))
+    a, b, c = episode[0]["pixels"], episode[1]["pixels"], episode[3]["pixels"]
+    assert (a[:, :, 5:, 5:] == a[:1, :, 5:, 5:]).all() and (a[0] == b[0]).all()
+    assert (a[0] != c[0]).any()
+    # black frames become 255 * alpha * Z / (1 + alpha), so 3/4 of uniform noise at alpha 3
+    assert a[:, :, 5:, 5:].float().mean() / 255 == pytest.approx(0.75 * 0.5, abs=0.05)
+    assert (corner(a) != corner(a)[:, :, :1, :1]).any()  # the tag's colour, noised after stamping
+
+    (tmp_path / "frame").mkdir()
+    frame = PixelNoise("frame", alpha=3.0, seed=1).wrap(toy_dataset(tmp_path / "frame"))
+    a, c = frame[0]["pixels"], frame[2]["pixels"]
+    assert (a[0] != a[1]).any()
+    torch.testing.assert_close(c[0], a[1])  # both are row 2 of episode 0
+
+
 def test_eval_tag_uses_one_colour_in_episode_mode_and_new_ones_in_frame_mode():
     frame = torch.zeros(3, 16, 16, dtype=torch.uint8)
     episode = EvalTag(PixelTag("episode"), lambda x: x)
@@ -153,3 +170,14 @@ def test_null_seed_without_a_saved_tag_is_zero(tmp_path):
 def test_configs_default_to_the_string_off(path, key):
     # unquoted YAML 1.1 `off` loads as False
     assert OmegaConf.select(OmegaConf.load(path), key) == "off"
+
+
+def test_measure_finds_the_run_directory_from_a_weights_file_or_a_directory(tmp_path):
+    from measure import run_dirs
+
+    run = tmp_path / "checkpoints" / "run"
+    run.mkdir(parents=True)
+    for policy in ("run/weights_epoch_10.pt", "run"):
+        results_path, run_path = run_dirs(policy, tmp_path)
+        assert run_path == run
+        assert results_path == tmp_path / "run"

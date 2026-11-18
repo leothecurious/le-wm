@@ -20,19 +20,20 @@ import torch
 from omegaconf import OmegaConf
 
 
-def resolve_seed(tag_cfg, checkpoint_dir):
-    """Fill a null ``tag_cfg.seed`` from the ``config.yaml`` in ``checkpoint_dir``.
+def resolve_seed(section_cfg, checkpoint_dir, key="tag"):
+    """Fill a null ``section_cfg.seed``, the tag or noise section of a config, from section ``key``
+    of the ``config.yaml`` in ``checkpoint_dir``.
 
-    Seed 0 when there is no saved tag to read: no checkpoint (the random
+    Seed 0 when there is no saved section to read: no checkpoint (the random
     policy), no ``config.yaml`` (a downloaded model) or a checkpoint trained
-    before the tag existed. The seed is read even while the tag is off, as the
+    before the section existed. The seed is read even while the tag is off, as the
     pair metric stamps the training colours regardless of mode.
     """
-    if tag_cfg.get("seed") is not None:
+    if section_cfg.get("seed") is not None:
         return
     config = None if checkpoint_dir is None else Path(checkpoint_dir) / "config.yaml"
-    saved = OmegaConf.load(config).get("tag") if config and config.exists() else None
-    tag_cfg.seed = saved.seed if saved else 0
+    saved = OmegaConf.load(config).get(key) if config and config.exists() else None
+    section_cfg.seed = saved.seed if saved else 0
 
 
 class PixelTag:
@@ -65,19 +66,25 @@ class PixelTag:
 
     def wrap(self, dataset):
         """Make ``dataset`` stamp every clip it returns, in place; off leaves it alone."""
-        if self.mode == "off":
-            return dataset
-        if type(dataset) is not swm.data.HDF5Dataset:
-            raise TypeError(f"tag supports HDF5 datasets, got {type(dataset).__name__}")
-        dataset.__class__ = TaggedHDF5Dataset
-        dataset.tag = self
-        return dataset
+        return dataset if self.mode == "off" else stamp_clips(dataset, self)
 
 
-class TaggedHDF5Dataset(swm.data.HDF5Dataset):
-    """HDF5 dataset that stamps the tag on the raw pixels of each clip."""
+def stamp_clips(dataset, stamp):
+    """Make ``dataset`` apply ``stamp.stamp`` to the raw pixels of every clip, after
+    the stamps it already has."""
+    if type(dataset) is swm.data.HDF5Dataset:
+        dataset.__class__ = StampedHDF5Dataset
+        dataset.stamps = []
+    elif not isinstance(dataset, StampedHDF5Dataset):
+        raise TypeError(f"stamps support HDF5 datasets, got {type(dataset).__name__}")
+    dataset.stamps.append(stamp)
+    return dataset
 
-    tag: PixelTag
+
+class StampedHDF5Dataset(swm.data.HDF5Dataset):
+    """HDF5 dataset that applies its stamps, in order, to the raw uint8 pixels of each clip."""
+
+    stamps: list
 
     def _load_slice(self, episode, start, end):
         # The base class applies the transform inside ``_load_slice``; hold it
@@ -87,7 +94,8 @@ class TaggedHDF5Dataset(swm.data.HDF5Dataset):
             steps = super()._load_slice(episode, start, end)
         finally:
             self.transform = transform
-        self.tag.stamp(steps["pixels"], episode, start, self.frameskip)
+        for stamp in self.stamps:
+            stamp.stamp(steps["pixels"], episode, start, self.frameskip)
         return transform(steps) if transform else steps
 
 

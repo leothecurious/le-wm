@@ -1,0 +1,42 @@
+defaults:
+  - launcher: local
+  - _self_
+  - optional /paths: local
+
+paths:
+  data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
+  runs: null # root for checkpoints/, spt/ and results; null = same default
+
+policy: ??? # checkpoint, resolved like eval.py
+latents_path: null # reuse saved latents instead of encoding
+
+data:
+  img_size: 32
+  batch_size: 64
+  generator: null # the checkpoint's data.generator; probe and test sequences are generated from the checkpoint's run seed
+  noise: # mode/alpha null resolve to the checkpoint's
+    mode: null
+    alpha: null
+  probe:
+    n: 10000 # sequences the readouts are fitted on
+  test:
+    n: 10000 # sequences the metrics are scored on
+
+windows:
+  frames: 17 # a whole episode
+  min_frames: 17
+  rollout: true # first frame followed by predictions from actions only
+  precision: fp32 # fp32 | bf16 | fp16
+
+# column[:, index]; angle = periodic value
+targets:
+  - {name: dot_x, column: state, index: 0}
+  - {name: dot_y, column: state, index: 1}
+
+metrics:
+  - {name: rollout_probe}
+  - {name: state_probe, groups: [state], kinds: [linear, mlp], windows: [1]}
+  - {name: rank_spectrum, frame: null} # every valid frame; frame 0 is the episode start
+
+output:
+  filename: dot_metrics.txt

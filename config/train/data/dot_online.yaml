@@ -1,0 +1,23 @@
+# @package _global_
+# Moving dot generated on the fly (dot.py): every batch is drawn fresh from seeded generators on the
+# training device. Lengths are in units of the square's side. Geometry follows the reference code
+# (vladisai/JEPA_SSL_NeurIPS_2022, data/single.py) where it differs from the paper's text: its pixel values on
+# a 28-px frame divided by 27, the span of its pixel coordinates. 4-pixel ViT patches make an 8x8 grid and the
+# pixel objectives decode to the full frame.
+data:
+  generator:
+    size: 32 # frame side in pixels; 28 in the paper, 32 here so the decoder's doublings reach it
+    steps: 16 # actions per sequence; a sequence has steps + 1 frames
+    max_step: 0.148148 # largest action norm; 4 px in the code (paper: 0.14)
+    sigma: 0.048148 # Gaussian blur of the dot; 1.3 px in the code (paper: 0.05)
+    margin: 0.096296 # the dot starts and stays at least 2 sigma from every edge, as in the code (paper: clipped to [0, 1])
+    concentration: 0.2 # Von Mises concentration of action directions around the sequence's heading (paper: 1.3)
+    steps_per_epoch: 11250 # 90,000 sequences x 16 clips / batch 128: the epoch of a recorded 100,000-sequence set split 90/10
+    chunk: 100 # batches generated at once
+    stats_sequences: 100000 # sequences whose actions fit the normalizer
+    val_sequences: 10000 # fixed held-out sequences, every clip of which is validated each epoch
+history_size: 1
+img_size: 32
+patch_size: 4
+decoder_size: 32
+output_model_name: dot_${loss.kind}_${noise.mode}${noise.alpha}_seed${seed}

@@ -4,4 +4,5 @@ __pycache__/
 outputs/
 multirun/
 wandb/
+runs/
 config/paths/local.yaml

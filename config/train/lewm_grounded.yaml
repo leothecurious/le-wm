@@ -1,0 +1,9 @@
+# LeWM's loss plus beta times the pixel error of the decoded predicted embedding.
+defaults:
+  - lewm
+  - override model: lewm_pixel
+  - _self_
+
+loss:
+  kind: grounded
+  beta: 1.0

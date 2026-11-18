@@ -1,0 +1,8 @@
+# The same world model as lewm.yaml trained on the next-frame pixel error alone.
+defaults:
+  - lewm
+  - override model: lewm_pixel
+  - _self_
+
+loss:
+  kind: pixel
