@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 
@@ -262,7 +263,7 @@ def run(cfg):
         seed=cfg.seed,
     )
 
-    with tracking.finishing(wb):
+    with wb or nullcontext():  # a W&B run finishes as failed if the block raises
         manager()
     if not cfg.checkpoint.keep_resume:
         ckpt_path.unlink(missing_ok=True)

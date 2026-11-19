@@ -1,5 +1,6 @@
 import json
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 import hydra
@@ -140,7 +141,7 @@ def run(cfg: DictConfig):
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
 
-    with tracking.finishing(wb):
+    with wb or nullcontext():
         start_time = time.time()
         metrics = {}
         if cfg.metrics or cfg.get("pred_copy"):

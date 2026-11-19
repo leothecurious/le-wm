@@ -32,7 +32,6 @@ import os
 import shutil
 import subprocess
 import time
-from contextlib import contextmanager
 from pathlib import Path
 
 import wandb
@@ -123,19 +122,6 @@ def start(cfg, *, name, run_id, job_type, run_dir, config):
     assert run.id == run_id, (run.id, run_id)
     run.config.update(config, allow_val_change=True)
     return run
-
-
-@contextmanager
-def finishing(run):
-    """Finish ``run`` (None is a no-op) when the block ends, as failed if it raised."""
-    try:
-        yield run
-    except BaseException:
-        if run:
-            run.finish(exit_code=1)
-        raise
-    if run:
-        run.finish()
 
 
 class RunLogger(Logger):
