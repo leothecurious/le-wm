@@ -16,6 +16,7 @@ Keys, with ``<label>`` present only when ``wandb.label`` is set:
   trainer/global_step     the x axis of all of the above
   checkpoint/file, checkpoint/sha256
                           last saved weights file of the training run, in the summary
+  checkpoint/artifact     with ``wandb.upload_weights``, the artifact holding that file
   measure[/<label>]/<metric>/...
                           every scalar of measure.py's metrics, in the summary; lists of numbers stay lists
   measure[/<label>]/provenance/*
@@ -28,6 +29,7 @@ measurement, the resolved measure config under ``measure[_<label>]``.
 
 import hashlib
 import os
+import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -38,6 +40,7 @@ from lightning.pytorch.loggers import Logger
 from lightning.pytorch.utilities import rank_zero_only
 
 REPO = Path(__file__).resolve().parent
+ARTIFACT_TMP = "wandb_artifacts"
 
 HEADLINE = {
     "rollout_probe/r": "r",
@@ -85,6 +88,10 @@ def start(cfg, *, name, run_id, job_type, run_dir, config):
 
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+    if cfg.get("upload_weights"):
+        # artifact staging and cache live under the run directory, so removing them touches nothing else
+        os.environ["WANDB_CACHE_DIR"] = str(run_dir / ARTIFACT_TMP / "cache")
+        os.environ["WANDB_DATA_DIR"] = str(run_dir / ARTIFACT_TMP / "data")
     run = wandb.init(
         entity=cfg.entity,
         project=cfg.project,
@@ -157,20 +164,40 @@ class RunLogger(Logger):
 
 
 class CheckpointHashCallback(Callback):
-    """Records the file name and sha256 of the last ``weights_epoch_N.pt`` in the run summary at the end of training."""
+    """Records the file name and sha256 of the last ``weights_epoch_N.pt`` in the run summary at the end of
+    training, and with ``upload`` uploads that file as an artifact.
 
-    def __init__(self, run, run_dir):
+    Once an online upload is confirmed, the run's local artifact staging and cache are deleted. An offline
+    run keeps them for ``wandb sync``.
+    """
+
+    def __init__(self, run, run_dir, upload=False):
         super().__init__()
         self.run = run
         self.run_dir = Path(run_dir)
+        self.upload = upload
 
     def on_train_end(self, trainer, pl_module):
         files = list(self.run_dir.glob("weights_epoch_*.pt"))
         if not trainer.is_global_zero or not files:
             return
         last = max(files, key=lambda p: int(p.stem.rsplit("_", 1)[1]))
+        digest = sha256(last)
         self.run.summary["checkpoint/file"] = last.name
-        self.run.summary["checkpoint/sha256"] = sha256(last)
+        self.run.summary["checkpoint/sha256"] = digest
+        if self.upload:
+            self._upload(last, digest)
+
+    def _upload(self, path, digest):
+        artifact = wandb.Artifact(f"{self.run.id}-weights", type="model", metadata={"file": path.name, "sha256": digest})
+        artifact.add_file(str(path), name=path.name)
+        logged = self.run.log_artifact(artifact, aliases=["latest"])
+        self.run.summary["checkpoint/artifact"] = artifact.name
+        if self.run.settings.mode == "online":
+            logged.wait()
+            if logged.state != "COMMITTED":
+                raise RuntimeError(f"weights artifact {artifact.name} is {logged.state}, not committed")
+            shutil.rmtree(self.run_dir / ARTIFACT_TMP, ignore_errors=True)
 
 
 def flatten(tree, prefix=""):

@@ -7,3 +7,4 @@ group: null # the study, e.g. dot2
 tags: []
 resume: allow # allow: create the run if it is new; must: continue an existing one
 label: null # names one measurement of a run so repeated ones keep their own keys (measure only)
+upload_weights: false # train only: upload the final weights file as an artifact (counts against W&B storage)
