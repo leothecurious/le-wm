@@ -1,14 +1,13 @@
 import json
 import time
-from contextlib import nullcontext
 from pathlib import Path
 
 import hydra
 import stable_worldmodel as swm
 import torch
+import wandb
 from omegaconf import DictConfig, OmegaConf, open_dict
 
-import tracking
 from metrics import data, pairs, predictor, suite
 from metrics.latents import Latents, extract
 from tag import PixelTag, resolve_seed
@@ -66,31 +65,6 @@ def run_dirs(policy, runs_root):
     return results_path.parent, run_path.parent
 
 
-def checkpoint_file(policy, runs_root):
-    """The weights file ``policy`` loads, or None for a Hugging Face repo id."""
-    path = Path(swm.data.utils.get_cache_dir(runs_root, sub_folder="checkpoints"), policy)
-    files = [path] if path.suffix == ".pt" else sorted(path.glob("*.pt")) if path.is_dir() else []
-    return files[0] if len(files) == 1 else None
-
-
-def start_wandb(cfg, run_path):
-    """Open the W&B run of the checkpoint's training run (the name and id saved in its config.yaml, else the
-    run directory's name) and return it with the measurement's provenance. Seeds are the resolved ones."""
-    saved = OmegaConf.load(run_path / "config.yaml") if (run_path / "config.yaml").exists() else {}
-    name = saved.get("output_model_name") or run_path.name
-    wb = tracking.start(cfg.wandb, name=name, run_id=saved.get("subdir") or name, run_dir=run_path)
-    weights = checkpoint_file(cfg.policy, cfg.paths.runs)
-    provenance = {
-        **tracking.git_state(),
-        "policy": cfg.policy,
-        "checkpoint_sha256": tracking.sha256(weights) if weights else None,
-        "data_seed": cfg.data.seed,
-        "tag_seed": cfg.data.tag.seed,
-        "noise_seed": cfg.data.noise.seed,
-    }
-    return wb, provenance
-
-
 def resolve_generated(cfg, run_path):
     """Fill cfg.data's generator, run seed, noise settings and action normalizer from the checkpoint's config.
 
@@ -117,65 +91,70 @@ def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
     off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
     cfg = OmegaConf.merge({"data": off}, cfg)
+    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     if cfg.wandb.enabled:
-        tracking.check(cfg.wandb)
+        # the checkpoint's training run, looked up first so a missing run or a bad key fails before any work
+        saved = OmegaConf.load(run_path / "config.yaml").wandb.config
+        wandb_path = "/".join(p for p in (saved.entity, saved.project, saved.id) if p)
+        wb = wandb.Api().run(wandb_path)
     model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
     if "generator" in cfg.data:
         resolve_generated(cfg, run_path)
     else:
         resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
-    wb, provenance = start_wandb(cfg, run_path) if cfg.wandb.enabled else (None, None)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
 
-    with wb or nullcontext():
-        start_time = time.time()
-        metrics = {}
-        if cfg.metrics or cfg.get("pred_copy"):
-            lat = get_latents(cfg, model, latents_path)
-        if cfg.metrics:
-            metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
-        if cfg.get("pairs"):
-            metrics["pairs"] = measure_pairs(cfg, model)
-        if cfg.get("pred_copy"):
-            metrics["pred_copy"] = predictor.measure(model, lat, **cfg.pred_copy)
-        if cfg.get("colour"):
-            metrics["colour_probe"] = measure_colour(cfg, model)
-        end_time = time.time()
+    start_time = time.time()
+    metrics = {}
+    if cfg.metrics or cfg.get("pred_copy"):
+        lat = get_latents(cfg, model, latents_path)
+    if cfg.metrics:
+        metrics = suite.run(lat, OmegaConf.to_container(cfg.metrics, resolve=True))
+    if cfg.get("pairs"):
+        metrics["pairs"] = measure_pairs(cfg, model)
+    if cfg.get("pred_copy"):
+        metrics["pred_copy"] = predictor.measure(model, lat, **cfg.pred_copy)
+    if cfg.get("colour"):
+        metrics["colour_probe"] = measure_colour(cfg, model)
+    end_time = time.time()
 
-        print(json.dumps(metrics, indent=1))
+    print(json.dumps(metrics, indent=1))
 
-        with (results_path / cfg.output.filename).open("a") as f:
-            f.write("\n")  # separate from previous runs
+    with (results_path / cfg.output.filename).open("a") as f:
+        f.write("\n")  # separate from previous runs
 
-            f.write("==== CONFIG ====\n")
-            f.write(OmegaConf.to_yaml(cfg))
-            f.write("\n")
+        f.write("==== CONFIG ====\n")
+        f.write(OmegaConf.to_yaml(cfg))
+        f.write("\n")
 
-            f.write("==== RESULTS ====\n")
-            f.write(f"metrics: {json.dumps(metrics)}\n")
-            f.write(f"latents: {cfg.get('latents_path') or (latents_path if cfg.cache_latents else 'not saved')}\n")
-            f.write(f"evaluation_time: {end_time - start_time} seconds\n")
+        f.write("==== RESULTS ====\n")
+        f.write(f"metrics: {json.dumps(metrics)}\n")
+        f.write(f"latents: {cfg.get('latents_path') or (latents_path if cfg.cache_latents else 'not saved')}\n")
+        f.write(f"evaluation_time: {end_time - start_time} seconds\n")
 
-        record = {
-            "policy": cfg.policy,
-            "config": OmegaConf.to_container(cfg, resolve=True),
-            "metrics": metrics,
-        }
-        if wb:
-            record["wandb"] = {"entity": wb.entity, "project": wb.project, "id": wb.id}
-        with (results_path / f"{stem}.jsonl").open("a") as f:
-            f.write(json.dumps(record) + "\n")
+    record = {
+        "policy": cfg.policy,
+        "config": OmegaConf.to_container(cfg, resolve=True),
+        "metrics": metrics,
+    }
+    if cfg.wandb.enabled:
+        record["wandb"] = {"entity": wb.entity, "project": wb.project, "id": wb.id}
+    with (results_path / f"{stem}.jsonl").open("a") as f:
+        f.write(json.dumps(record) + "\n")
 
-        if wb:
-            tracking.log_measure(wb, metrics, provenance, record["config"], cfg.wandb.label)
+    if cfg.wandb.enabled:
+        label = cfg.wandb.label
+        wb = wandb.Api().run(wandb_path)
+        wb.summary[f"test/{label}" if label else "test"] = metrics
+        wb.config[f"measure_{label}" if label else "measure"] = record["config"]
+        wb.update()
 
 
 if __name__ == "__main__":

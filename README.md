@@ -128,27 +128,19 @@ restarts from scratch.
 
 ### Weights & Biases
 
-Off by default. `wandb.enabled=true` logs to W&B in addition to the local files, which stay the durable record
-(`metrics.csv` under `<runs>/spt/<subdir>/runs`, `dot_metrics.jsonl` and the like next to the results). Entity and
-project come from `WANDB_ENTITY` and `WANDB_PROJECT`. The run is named after `output_model_name`, its id is `subdir`,
-`wandb.group` is the study (for example `dot2`) and `wandb.tags` are free tags. A run that cannot be opened, a
-missing entity or project, `WANDB_MODE=disabled` and a mode other than the one in the environment all abort before
-training starts. Offline logging needs `WANDB_MODE=offline` set explicitly; its files are written under
-`<runs>/checkpoints/<subdir>/wandb` and uploaded with `wandb sync`.
+Off by default. `wandb.enabled=true` adds Lightning's `WandbLogger` beside the local files, with the arguments in
+`wandb.config` (project `le-wm`, the entity of the API key or `WANDB_ENTITY`, name `output_model_name`, id `subdir`)
+and the resolved config. The run opens before any data or model loading, and a failed login aborts. Offline and
+disabled modes are refused. Curves are `train/`, `val/`, `gap/` and `pair/`.
 
 ```bash
-WANDB_ENTITY=... WANDB_PROJECT=... bash scripts/run.sh dot2_latent_off_seed0 data=dot_online wandb.enabled=true wandb.group=dot2
+bash scripts/run.sh dot2_latent_off_seed0 data=dot_online wandb.enabled=true wandb.config.group=dot2
+uv run measure.py --config-name=dot policy=dot2_latent_off_seed0/weights_epoch_10.pt wandb.enabled=true
 ```
 
-`measure.py` resumes the training run by its id (`wandb.resume=must`), so the curve and the measured numbers share
-one run, and fails if that run does not exist. Measuring one run twice (a different noise, an earlier epoch) under
-one set of keys overwrites the first; set `wandb.label=<name>` to keep both. The key namespaces are listed in the
-docstring of `tracking.py`.
-
-`wandb.upload_weights=true` also uploads the final weights file as a `model` artifact named `<run>-weights`, with its
-sha256 in the metadata and `checkpoint/artifact` in the summary. After an online upload is confirmed, the run's
-artifact staging and cache under `<runs>/checkpoints/<subdir>/wandb_artifacts` are deleted. The artifact counts against
-the W&B storage quota, and W&B itself also keeps its run files under `<runs>/checkpoints/<subdir>/wandb`.
+`measure.py` with `wandb.enabled=true` writes its metrics into that training run's summary under `test` and its
+config under `measure`. `wandb.label=<name>` keeps a second measurement of the same run apart (`test/<name>`,
+`measure_<name>`).
 
 For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
 

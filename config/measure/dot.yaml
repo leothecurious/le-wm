@@ -1,11 +1,12 @@
 defaults:
   - launcher: local
-  - /tracking@wandb: default
   - _self_
   - optional /paths: local
 
+# with enabled, write the results into the checkpoint's training run on W&B
 wandb:
-  resume: must # measure continues the training run
+  enabled: false
+  label: null # names one measurement of a run, so repeated ones keep their own keys
 
 paths:
   data: null # root holding datasets/; null = STABLEWM_HOME or ~/.stable_worldmodel
