@@ -52,7 +52,7 @@ HEADLINE = {
 
 
 def git_state():
-    """Commit of this checkout and whether tracked files differ from it (None, None without git)."""
+    """``git_commit`` of this checkout and ``git_dirty``, whether tracked files differ from it (None without git)."""
     try:
         git = ["git", "-C", str(REPO)]
         commit = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
@@ -60,8 +60,8 @@ def git_state():
             git + ["status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True
         ).stdout
     except (OSError, subprocess.CalledProcessError):
-        return None, None
-    return commit, bool(status.strip())
+        return {"git_commit": None, "git_dirty": None}
+    return {"git_commit": commit, "git_dirty": bool(status.strip())}
 
 
 def sha256(path):
@@ -74,7 +74,7 @@ def sha256(path):
 
 def check(cfg):
     """Fail before any work if a W&B run could not be opened: missing entity or project, a mode that would
-    log nothing, or a failed online login. Returns the mode.
+    log nothing, or a failed online login.
 
     Offline runs need ``WANDB_MODE=offline`` in the environment.
     """
@@ -85,19 +85,17 @@ def check(cfg):
         raise RuntimeError(f"wandb.enabled with WANDB_MODE={mode}: nothing would be logged")
     if mode == "online" and not wandb.login(verify=True):
         raise RuntimeError("wandb login failed")
-    return mode
 
 
-def start(cfg, *, name, run_id, job_type, run_dir, config):
-    """Open the W&B run ``run_id``, or fail.
+def start(cfg, *, name, run_id, run_dir, job_type=None, config=None):
+    """Open the W&B run ``run_id`` after ``check`` passed, or fail.
 
     A run silently offline through a saved W&B setting is an error. ``cfg.resume`` is ``allow`` to create
     the run if it is new and ``must`` to continue an existing one. ``job_type=None`` keeps a resumed run's.
     """
-    mode = check(cfg)
-    run_dir = Path(run_dir)
+    mode = os.environ.get("WANDB_MODE", "online")
     run_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.get("upload_weights"):
+    if cfg.upload_weights:
         # artifact staging and cache live under the run directory, so removing them touches nothing else
         os.environ["WANDB_CACHE_DIR"] = str(run_dir / ARTIFACT_TMP / "cache")
         os.environ["WANDB_DATA_DIR"] = str(run_dir / ARTIFACT_TMP / "data")
@@ -120,7 +118,8 @@ def start(cfg, *, name, run_id, job_type, run_dir, config):
         raise RuntimeError(f"wandb is in mode {run.settings.mode}, not the requested {mode}")
     # In "must" mode a missing run already raised; the id check guards against a different run being served.
     assert run.id == run_id, (run.id, run_id)
-    run.config.update(config, allow_val_change=True)
+    if config:
+        run.config.update(config, allow_val_change=True)
     return run
 
 

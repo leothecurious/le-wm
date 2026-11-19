@@ -73,24 +73,20 @@ def checkpoint_file(policy, runs_root):
     return files[0] if len(files) == 1 else None
 
 
-def start_wandb(cfg, run_path, weights):
-    """Open the W&B run of the checkpoint's training run: the name and id saved in its config.yaml, else the
-    run directory's name. Probe and test seeds are the resolved ones."""
+def start_wandb(cfg, run_path):
+    """Open the W&B run of the checkpoint's training run (the name and id saved in its config.yaml, else the
+    run directory's name) and return it with the measurement's provenance. Seeds are the resolved ones."""
     saved = OmegaConf.load(run_path / "config.yaml") if (run_path / "config.yaml").exists() else {}
     name = saved.get("output_model_name") or run_path.name
-    wb = tracking.start(
-        cfg.wandb, name=name, run_id=saved.get("subdir") or name, job_type=None,
-        run_dir=run_path, config={},
-    )
-    commit, dirty = tracking.git_state()
+    wb = tracking.start(cfg.wandb, name=name, run_id=saved.get("subdir") or name, run_dir=run_path)
+    weights = checkpoint_file(cfg.policy, cfg.paths.runs)
     provenance = {
-        "git_commit": commit,
-        "git_dirty": dirty,
+        **tracking.git_state(),
         "policy": cfg.policy,
         "checkpoint_sha256": tracking.sha256(weights) if weights else None,
         "data_seed": cfg.data.seed,
         "tag_seed": cfg.data.tag.seed,
-        "noise_seed": cfg.data.noise.get("seed"),
+        "noise_seed": cfg.data.noise.seed,
     }
     return wb, provenance
 
@@ -135,9 +131,7 @@ def run(cfg: DictConfig):
     else:
         resolve_seed(cfg.data.noise, run_path, key="noise")
     results_path.mkdir(parents=True, exist_ok=True)
-    wb, provenance = (
-        start_wandb(cfg, run_path, checkpoint_file(cfg.policy, cfg.paths.runs)) if cfg.wandb.enabled else (None, None)
-    )
+    wb, provenance = start_wandb(cfg, run_path) if cfg.wandb.enabled else (None, None)
     stem = Path(cfg.output.filename).stem
     latents_path = results_path / f"{Path(cfg.policy).stem}_{stem}_latents.pt"
 

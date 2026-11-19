@@ -213,13 +213,12 @@ def run(cfg):
     callbacks = []
     wb = None
     if cfg.wandb.enabled:
-        commit, dirty = tracking.git_state()
         wb = tracking.start(
             cfg.wandb, name=cfg.output_model_name, run_id=run_id or cfg.output_model_name, job_type="train",
             run_dir=run_dir, config={
                 **OmegaConf.to_container(cfg, resolve=True),
                 "provenance": {
-                    "git_commit": commit, "git_dirty": dirty,
+                    **tracking.git_state(),
                     "seeds": {"seed": cfg.seed, "tag_seed": cfg.tag.seed, "noise_seed": cfg.noise.seed},
                 },
             },
