@@ -5,6 +5,7 @@ from pathlib import Path
 import hydra
 import stable_worldmodel as swm
 import torch
+import wandb
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 from metrics import data, pairs, predictor, suite
@@ -50,7 +51,8 @@ def get_latents(cfg, model, latents_path):
         target_angle=angle,
         target_group=group,
     )
-    lat.save(latents_path)
+    if cfg.cache_latents:
+        lat.save(latents_path)
     return lat
 
 
@@ -89,12 +91,17 @@ def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
     off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
     cfg = OmegaConf.merge({"data": off}, cfg)
+    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
+    if cfg.wandb.enabled:
+        # the checkpoint's training run, looked up first so a missing run or a bad key fails before any work
+        saved = OmegaConf.load(run_path / "config.yaml").wandb.config
+        wandb_path = "/".join(p for p in (saved.entity, saved.project, saved.id) if p)
+        wb = wandb.Api().run(wandb_path)
     model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()
     model.requires_grad_(False)
 
-    results_path, run_path = run_dirs(cfg.policy, cfg.paths.runs)
     resolve_seed(cfg.data.tag, run_path)
     if "generator" in cfg.data:
         resolve_generated(cfg, run_path)
@@ -129,7 +136,7 @@ def run(cfg: DictConfig):
 
         f.write("==== RESULTS ====\n")
         f.write(f"metrics: {json.dumps(metrics)}\n")
-        f.write(f"latents: {cfg.get('latents_path') or latents_path}\n")
+        f.write(f"latents: {cfg.get('latents_path') or (latents_path if cfg.cache_latents else 'not saved')}\n")
         f.write(f"evaluation_time: {end_time - start_time} seconds\n")
 
     record = {
@@ -137,8 +144,17 @@ def run(cfg: DictConfig):
         "config": OmegaConf.to_container(cfg, resolve=True),
         "metrics": metrics,
     }
+    if cfg.wandb.enabled:
+        record["wandb"] = {"entity": wb.entity, "project": wb.project, "id": wb.id}
     with (results_path / f"{stem}.jsonl").open("a") as f:
         f.write(json.dumps(record) + "\n")
+
+    if cfg.wandb.enabled:
+        label = cfg.wandb.label
+        wb = wandb.Api().run(wandb_path)
+        wb.summary[f"test/{label}" if label else "test"] = metrics
+        wb.config[f"measure_{label}" if label else "measure"] = record["config"]
+        wb.update()
 
 
 if __name__ == "__main__":

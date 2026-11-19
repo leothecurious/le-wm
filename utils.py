@@ -117,13 +117,15 @@ class RNGStateCallback(Callback):
 
 
 class SaveCkptCallback(Callback):
-    """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs and at the last one, and
-    ``weights_step_N.pt`` every ``step_interval`` optimizer steps (None = never), through save_pretrained."""
+    """Saves ``weights_epoch_N.pt`` every ``epoch_interval`` epochs (only at epochs in ``epochs``, when
+    given) and at the last one, and ``weights_step_N.pt`` every ``step_interval`` optimizer steps (None =
+    never), through save_pretrained."""
 
-    def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None, cache_dir=None):
+    def __init__(self, run_name, cfg, epoch_interval: int = 1, step_interval=None, cache_dir=None, epochs=None):
         super().__init__()
         self.run_name = run_name
         self.cfg = cfg
+        self.epochs = epochs
         self.epoch_interval = epoch_interval
         self.step_interval = step_interval
         self.cache_dir = cache_dir
@@ -138,7 +140,8 @@ class SaveCkptCallback(Callback):
 
         if trainer.is_global_zero:
             epoch = trainer.current_epoch + 1
-            if epoch % self.epoch_interval == 0 or epoch == trainer.max_epochs:
+            wanted = epoch % self.epoch_interval == 0 if self.epochs is None else epoch in self.epochs
+            if wanted or epoch == trainer.max_epochs:
                 self._save(pl_module.model, f"epoch_{epoch}")
 
     def _save(self, model, name):

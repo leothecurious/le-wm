@@ -105,20 +105,42 @@ noise setting separately.
 
 `jepa.py` contains the PyTorch implementation of LeWM. Training is configured via [Hydra](https://hydra.cc/) config files under `config/train/`.
 
-Before training, set your WandB `entity` and `project` in `config/train/lewm.yaml`:
-```yaml
-wandb:
-  config:
-    entity: your_entity
-    project: your_project
-```
-
 To launch training:
 ```bash
 uv run train.py data=pusht
 ```
 
 Checkpoints are saved to `<runs>/checkpoints/<subdir>`, and `metrics.csv` to `<runs>/spt/<subdir>/runs`.
+
+A run keeps little by default. `weights_epoch_N.pt` (plain state dicts, which `measure.py` and `eval.py` load) is saved
+for epoch 5 and the last epoch. One resume file, `<name>_weights.ckpt` (the full trainer state a rerun resumes from), is
+rewritten every epoch and deleted after a successful finish. Measuring keeps its latents in memory. All of it is opt-out:
+
+```bash
+bash scripts/run.sh <name> checkpoint.epochs=null checkpoint.keep_resume=true checkpoint.lightning=true  # keep every epoch's weights, the resume file, and stable-pretraining's snapshots
+uv run measure.py --config-name=dot policy=<name>/weights_epoch_10.pt cache_latents=true        # save the latents next to the results
+```
+
+`checkpoint.epochs` lists the epochs whose weights are saved (the last always is; `null` saves every epoch).
+`checkpoint.lightning=true` also writes stable-pretraining's own full snapshots under `<runs>/spt/<subdir>`
+(`last.ckpt` and the end-of-epoch one). `checkpoint.resume=false` never writes the resume file, and a killed run then
+restarts from scratch.
+
+### Weights & Biases
+
+Off by default. `wandb.enabled=true` adds Lightning's `WandbLogger` beside the local files, with the arguments in
+`wandb.config` (project `le-wm`, the entity of the API key or `WANDB_ENTITY`, name `output_model_name`, id `subdir`)
+and the resolved config. The run opens before any data or model loading, and a failed login aborts. Offline and
+disabled modes are refused. Curves are `train/`, `val/`, `gap/` and `pair/`.
+
+```bash
+bash scripts/run.sh dot2_latent_off_seed0 data=dot_online wandb.enabled=true wandb.config.group=dot2
+uv run measure.py --config-name=dot policy=dot2_latent_off_seed0/weights_epoch_10.pt wandb.enabled=true
+```
+
+`measure.py` with `wandb.enabled=true` writes its metrics into that training run's summary under `test` and its
+config under `measure`. `wandb.label=<name>` keeps a second measurement of the same run apart (`test/<name>`,
+`measure_<name>`).
 
 For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
 
@@ -136,7 +158,7 @@ uv run eval.py --config-name=pusht.yaml policy=pusht/lewm_object.ckpt
 
 ## Metrics
 
-`measure.py` computes state and reverse probes and effective rank for one checkpoint. Configs live under `config/measure/`; `policy` resolves as in `eval.py`. Latents are saved next to the results, and `latents_path=<file>` reruns the metrics without re-encoding.
+`measure.py` computes state and reverse probes and effective rank for one checkpoint. Configs live under `config/measure/`; `policy` resolves as in `eval.py`. `cache_latents=true` saves the latents next to the results, and `latents_path=<file>` reruns the metrics without re-encoding.
 
 ```bash
 uv run measure.py --config-name=pusht policy=pusht_seed1/weights_epoch_10.pt
