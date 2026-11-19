@@ -51,7 +51,8 @@ def get_latents(cfg, model, latents_path):
         target_angle=angle,
         target_group=group,
     )
-    lat.save(latents_path)
+    if cfg.cache_latents:
+        lat.save(latents_path)
     return lat
 
 
@@ -163,7 +164,7 @@ def run(cfg: DictConfig):
 
             f.write("==== RESULTS ====\n")
             f.write(f"metrics: {json.dumps(metrics)}\n")
-            f.write(f"latents: {cfg.get('latents_path') or latents_path}\n")
+            f.write(f"latents: {cfg.get('latents_path') or (latents_path if cfg.cache_latents else 'not saved')}\n")
             f.write(f"evaluation_time: {end_time - start_time} seconds\n")
 
         record = {
