@@ -157,6 +157,8 @@ def recorded_data(cfg):
 def run(cfg):
     # Seed before building the model so weight init is reproducible too.
     pl.seed_everything(cfg.seed, workers=True)
+    if cfg.wandb.enabled:
+        tracking.check(cfg.wandb)
     # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
     # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
     torch.utils.deterministic.fill_uninitialized_memory = False
@@ -205,10 +207,6 @@ def run(cfg):
     if not cfg.checkpoint.lightning:
         spt.set(requeue_checkpoint=False)
 
-    run_dir.mkdir(parents=True, exist_ok=True)
-    with open(run_dir / "config.yaml", "w") as f:
-        OmegaConf.save(cfg, f)
-
     # metrics.csv next to the checkpoints, so every run keeps its training curve
     loggers = [CSVLogger(save_dir=run_dir, name="", version="")]
     callbacks = []
@@ -227,6 +225,11 @@ def run(cfg):
         )
         loggers.append(tracking.RunLogger(wb))
         callbacks.append(tracking.CheckpointHashCallback(wb, run_dir, cfg.wandb.upload_weights))
+
+    # after the W&B run opens, so a run that fails to start leaves no config.yaml that looks like a real run
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / "config.yaml", "w") as f:
+        OmegaConf.save(cfg, f)
 
     object_dump_callback = SaveCkptCallback(
         run_name=cfg.output_model_name, cfg=cfg.model, cache_dir=cfg.paths.runs, epoch_interval=1,

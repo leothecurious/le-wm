@@ -78,7 +78,7 @@ def start_wandb(cfg, run_path, weights):
     saved = OmegaConf.load(run_path / "config.yaml") if (run_path / "config.yaml").exists() else {}
     name = saved.get("output_model_name") or run_path.name
     wb = tracking.start(
-        cfg.wandb, name=name, run_id=saved.get("subdir") or name, job_type="measure",
+        cfg.wandb, name=name, run_id=saved.get("subdir") or name, job_type=None,
         run_dir=run_path, config={},
     )
     commit, dirty = tracking.git_state()
@@ -120,6 +120,8 @@ def run(cfg: DictConfig):
     """Compute the metric suite for one checkpoint."""
     off = {"tag": {"mode": "off", "size": 5, "seed": None}, "noise": {"mode": "off", "alpha": 0.0, "seed": None}}
     cfg = OmegaConf.merge({"data": off}, cfg)
+    if cfg.wandb.enabled:
+        tracking.check(cfg.wandb)
     model = swm.wm.utils.load_pretrained(cfg.policy, cache_dir=cfg.paths.runs)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model = model.eval()

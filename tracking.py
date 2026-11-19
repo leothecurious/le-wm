@@ -31,6 +31,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -41,6 +42,7 @@ from lightning.pytorch.utilities import rank_zero_only
 
 REPO = Path(__file__).resolve().parent
 ARTIFACT_TMP = "wandb_artifacts"
+RESUME_WAIT = 120  # seconds
 
 HEADLINE = {
     "rollout_probe/r": "r",
@@ -71,12 +73,11 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def start(cfg, *, name, run_id, job_type, run_dir, config):
-    """Open the W&B run ``run_id``, or fail.
+def check(cfg):
+    """Fail before any work if a W&B run could not be opened: missing entity or project, a mode that would
+    log nothing, or a failed online login. Returns the mode.
 
-    Offline runs need ``WANDB_MODE=offline`` in the environment. A run that would be disabled, or
-    silently offline through a saved W&B setting, is an error. ``cfg.resume`` is ``allow`` to create the
-    run if it is new and ``must`` to continue an existing one.
+    Offline runs need ``WANDB_MODE=offline`` in the environment.
     """
     if not cfg.entity or not cfg.project:
         raise ValueError("wandb.enabled needs WANDB_ENTITY and WANDB_PROJECT (or wandb.entity and wandb.project)")
@@ -85,24 +86,36 @@ def start(cfg, *, name, run_id, job_type, run_dir, config):
         raise RuntimeError(f"wandb.enabled with WANDB_MODE={mode}: nothing would be logged")
     if mode == "online" and not wandb.login(verify=True):
         raise RuntimeError("wandb login failed")
+    return mode
 
+
+def start(cfg, *, name, run_id, job_type, run_dir, config):
+    """Open the W&B run ``run_id``, or fail.
+
+    A run silently offline through a saved W&B setting is an error. ``cfg.resume`` is ``allow`` to create
+    the run if it is new and ``must`` to continue an existing one. ``job_type=None`` keeps a resumed run's.
+    """
+    mode = check(cfg)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if cfg.get("upload_weights"):
         # artifact staging and cache live under the run directory, so removing them touches nothing else
         os.environ["WANDB_CACHE_DIR"] = str(run_dir / ARTIFACT_TMP / "cache")
         os.environ["WANDB_DATA_DIR"] = str(run_dir / ARTIFACT_TMP / "data")
-    run = wandb.init(
-        entity=cfg.entity,
-        project=cfg.project,
-        name=name,
-        id=run_id,
-        group=cfg.group,
-        job_type=job_type,
-        tags=list(cfg.tags),
-        dir=str(run_dir),
-        resume=cfg.resume,
-    )
+    kwargs = {
+        "entity": cfg.entity, "project": cfg.project, "name": name, "id": run_id, "group": cfg.group,
+        "job_type": job_type, "tags": list(cfg.tags), "dir": str(run_dir), "resume": cfg.resume,
+    }
+    # A run finished seconds ago can still be unknown to the server, which "must" reports as missing;
+    # measure queued right after its training hits this, so retry for up to RESUME_WAIT seconds.
+    for waited in range(0, RESUME_WAIT + 1, 15):
+        try:
+            run = wandb.init(**kwargs)
+            break
+        except wandb.errors.UsageError:
+            if cfg.resume != "must" or mode != "online" or waited >= RESUME_WAIT:
+                raise
+            time.sleep(15)
     if run.settings.mode != mode:
         run.finish(exit_code=1)
         raise RuntimeError(f"wandb is in mode {run.settings.mode}, not the requested {mode}")
