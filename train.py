@@ -1,4 +1,4 @@
-from contextlib import nullcontext
+import hashlib
 from functools import partial
 from pathlib import Path
 
@@ -8,11 +8,10 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
 import torch.nn.functional as F
-from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import OmegaConf, open_dict
 
 import dot
-import tracking
 from metrics.pairs import PairCallback, load_frames
 from module import SIGReg, grad_shares
 from noise import PixelNoise
@@ -156,10 +155,23 @@ def recorded_data(cfg):
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
 def run(cfg):
+    run_id = cfg.get("subdir") or ""
+    run_dir = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='checkpoints'), run_id)
+    # metrics.csv next to the checkpoints, so every run keeps its training curve
+    loggers = [CSVLogger(save_dir=run_dir, name="", version="")]
+    if cfg.wandb.enabled:
+        # Opened before any work, so a bad key or an offline or disabled mode fails at once. W&B takes the
+        # commit from the repo holding save_dir unless given git_root, and that may be another checkout or none.
+        wandb_logger = WandbLogger(
+            **OmegaConf.to_container(cfg.wandb.config, resolve=True),
+            save_dir=str(run_dir), settings={"git_root": str(Path(__file__).resolve().parent)},
+        )
+        if wandb_logger.experiment.offline or wandb_logger.experiment.disabled:
+            raise RuntimeError("wandb.enabled needs an online W&B run")
+        loggers.append(wandb_logger)
+
     # Seed before building the model so weight init is reproducible too.
     pl.seed_everything(cfg.seed, workers=True)
-    if cfg.wandb.enabled:
-        tracking.check(cfg.wandb)
     # Deterministic mode NaN-fills every new allocation to expose reads of uninitialized
     # memory. Nothing here reads uninitialized memory, so the fill only costs GPU time.
     torch.utils.deterministic.fill_uninitialized_memory = False
@@ -201,35 +213,19 @@ def run(cfg):
     ##       training       ##
     ##########################
 
-    run_id = cfg.get("subdir") or ""
-    run_dir = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='checkpoints'), run_id)
     # stable-pretraining writes its run registry and metrics.csv under <cache_dir>/runs; one cache per run keeps each findable by name
     spt.set(cache_dir=str(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='spt') / run_id))
     if not cfg.checkpoint.lightning:
         spt.set(requeue_checkpoint=False)
-
-    # metrics.csv next to the checkpoints, so every run keeps its training curve
-    loggers = [CSVLogger(save_dir=run_dir, name="", version="")]
-    callbacks = []
-    wb = None
-    if cfg.wandb.enabled:
-        wb = tracking.start(
-            cfg.wandb, name=cfg.output_model_name, run_id=run_id or cfg.output_model_name, job_type="train",
-            run_dir=run_dir, config={
-                **OmegaConf.to_container(cfg, resolve=True),
-                "provenance": {
-                    **tracking.git_state(),
-                    "seeds": {"seed": cfg.seed, "tag_seed": cfg.tag.seed, "noise_seed": cfg.noise.seed},
-                },
-            },
-        )
-        loggers.append(tracking.RunLogger(wb))
-        callbacks.append(tracking.CheckpointHashCallback(wb, run_dir, cfg.wandb.upload_weights))
+    # its wandb_resume.json lands in the working directory; the run id is subdir already
+    spt.set(default_callbacks={"wandb_checkpoint": False})
 
     # after the W&B run opens, so a run that fails to start leaves no config.yaml that looks like a real run
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "config.yaml", "w") as f:
         OmegaConf.save(cfg, f)
+    if cfg.wandb.enabled:
+        wandb_logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
 
     object_dump_callback = SaveCkptCallback(
         run_name=cfg.output_model_name, cfg=cfg.model, cache_dir=cfg.paths.runs, epoch_interval=1,
@@ -246,7 +242,6 @@ def run(cfg):
             GapCallback(),
             *([ResumeCkptCallback(ckpt_path)] if cfg.checkpoint.resume else []),
             *pair_callbacks,
-            *callbacks,
         ],
         num_sanity_val_steps=1,
         logger=loggers,
@@ -262,8 +257,11 @@ def run(cfg):
         seed=cfg.seed,
     )
 
-    with wb or nullcontext():  # a W&B run finishes as failed if the block raises
-        manager()
+    manager()
+    if cfg.wandb.enabled:
+        weights = swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='checkpoints') / cfg.output_model_name
+        weights = weights / f"weights_epoch_{cfg.trainer.max_epochs}.pt"
+        wandb_logger.experiment.summary["checkpoint/sha256"] = hashlib.sha256(weights.read_bytes()).hexdigest()
     if not cfg.checkpoint.keep_resume:
         ckpt_path.unlink(missing_ok=True)
 

@@ -1,7 +1,6 @@
 defaults:
   - _self_
   - launcher: local
-  - /tracking@wandb: default
   - data: pusht
   - model: lewm
   - optional /paths: local # machine-specific roots; /paths resolves through hydra_plugins/lewm_searchpath.py
@@ -61,6 +60,20 @@ noise:
 pair:
   every_n_steps: null
   n: 256
+
+# Weights & Biases, alongside metrics.csv; config holds the WandbLogger arguments
+wandb:
+  enabled: false
+  config:
+    project: le-wm
+    entity: null # null: WANDB_ENTITY, else the API key's default entity
+    name: ${output_model_name}
+    id: ${subdir}
+    group: null # the study, e.g. dot2
+    tags: []
+    job_type: train
+    resume: allow
+    save_code: true # also uploads train.py and diff.patch of uncommitted changes
 
 # Files a run keeps: the weights of the listed epochs and the last, and no more. Override to keep more.
 checkpoint:
