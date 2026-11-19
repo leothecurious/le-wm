@@ -9,6 +9,7 @@ from hydra import compose, initialize_config_dir
 import train
 from utils import ResumeCkptCallback
 
+KEEP_RESUME = ["checkpoint.keep_resume=true"]  # the resume file is deleted after a finished run by default
 CONFIG_DIR = str(Path(__file__).resolve().parents[1] / "config" / "train")
 
 
@@ -21,7 +22,7 @@ def toy_dataset(root):
         f["action"] = rng.normal(size=(80, 2)).astype(np.float32)
 
 
-def fit(data, subdir, epochs, roots):
+def fit(data, subdir, epochs, roots, extra=()):
     overrides = [
         f"paths.data={roots}",
         f"paths.runs={roots}",
@@ -44,6 +45,7 @@ def fit(data, subdir, epochs, roots):
         f"trainer.max_epochs={epochs}",
         "+trainer.limit_train_batches=3",
         "+trainer.limit_val_batches=1",
+        *extra,
     ]
     with initialize_config_dir(config_dir=CONFIG_DIR, version_base=None):
         train.run(compose(config_name="lewm", overrides=overrides))
@@ -62,7 +64,7 @@ def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch)
     toy_dataset(tmp_path)
     runs = roots / "checkpoints"
 
-    fit(data, "whole", 3, roots)
+    fit(data, "whole", 3, roots, KEEP_RESUME)
 
     save = ResumeCkptCallback.on_train_epoch_end
     epochs_run = []
@@ -76,9 +78,9 @@ def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch)
     killed = False
     monkeypatch.setattr(ResumeCkptCallback, "on_train_epoch_end", save_then_die)
     with pytest.raises(RuntimeError, match="killed"):
-        fit(data, "killed", 3, roots)
+        fit(data, "killed", 3, roots, KEEP_RESUME)
     killed = True
-    fit(data, "killed", 3, roots)
+    fit(data, "killed", 3, roots, KEEP_RESUME)
 
     # the rerun continues at epoch 1 instead of repeating epoch 0
     assert epochs_run == [0, 1, 2]
@@ -92,3 +94,19 @@ def test_resume_after_a_kill_matches_an_uninterrupted_run(tmp_path, monkeypatch)
     assert list((runs / "lewm").glob("weights_epoch_*.pt"))
     assert list((roots / "spt" / "killed").rglob("metrics.csv"))
     assert not home.exists() or not any(home.rglob("*.pt"))
+
+
+def test_default_layout_keeps_only_the_listed_weights_and_the_last(tmp_path, monkeypatch):
+    monkeypatch.setenv("STABLEWM_HOME", str(tmp_path / "home"))
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    toy_dataset(tmp_path)
+
+    fit(tmp_path / "toy.h5", "run", 3, roots, ["checkpoint.epochs=[2]", "output_model_name=run"])
+
+    # no resume file, no stable-pretraining snapshots, and the last epoch's weights although unlisted
+    run = roots / "checkpoints" / "run"
+    assert sorted(p.name for p in run.iterdir() if p.suffix in (".pt", ".ckpt")) == [
+        "weights_epoch_2.pt", "weights_epoch_3.pt",
+    ]
+    assert not list((roots / "spt" / "run").rglob("*.ckpt"))

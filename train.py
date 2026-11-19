@@ -202,6 +202,8 @@ def run(cfg):
     run_dir = Path(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='checkpoints'), run_id)
     # stable-pretraining writes its run registry and metrics.csv under <cache_dir>/runs; one cache per run keeps each findable by name
     spt.set(cache_dir=str(swm.data.utils.get_cache_dir(cfg.paths.runs, sub_folder='spt') / run_id))
+    if not cfg.checkpoint.lightning:
+        spt.set(requeue_checkpoint=False)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "config.yaml", "w") as f:
@@ -224,11 +226,11 @@ def run(cfg):
             },
         )
         loggers.append(tracking.RunLogger(wb))
-        callbacks.append(tracking.CheckpointHashCallback(wb, run_dir))
+        callbacks.append(tracking.CheckpointHashCallback(wb, run_dir, cfg.wandb.upload_weights))
 
     object_dump_callback = SaveCkptCallback(
         run_name=cfg.output_model_name, cfg=cfg.model, cache_dir=cfg.paths.runs, epoch_interval=1,
-        step_interval=cfg.checkpoint.every_n_steps,
+        step_interval=cfg.checkpoint.every_n_steps, epochs=cfg.checkpoint.epochs,
     )
 
     ckpt_path = run_dir / f"{cfg.output_model_name}_weights.ckpt"
@@ -239,13 +241,13 @@ def run(cfg):
             object_dump_callback,
             RNGStateCallback(train),
             GapCallback(),
-            ResumeCkptCallback(ckpt_path),
+            *([ResumeCkptCallback(ckpt_path)] if cfg.checkpoint.resume else []),
             *pair_callbacks,
             *callbacks,
         ],
         num_sanity_val_steps=1,
         logger=loggers,
-        enable_checkpointing=True,
+        enable_checkpointing=cfg.checkpoint.lightning,
     )
 
     manager = spt.Manager(
@@ -259,6 +261,8 @@ def run(cfg):
 
     with tracking.finishing(wb):
         manager()
+    if not cfg.checkpoint.keep_resume:
+        ckpt_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

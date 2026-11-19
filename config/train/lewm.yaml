@@ -62,9 +62,13 @@ pair:
   every_n_steps: null
   n: 256
 
-# also save weights_step_N.pt every this many optimizer steps (null = epochs only)
+# Files a run keeps: the weights of the listed epochs and the last, and no more. Override to keep more.
 checkpoint:
-  every_n_steps: null
+  every_n_steps: null # also save weights_step_N.pt every this many optimizer steps (null = epochs only)
+  epochs: [5] # weights_epoch_N.pt for these epochs and the last one (null = every epoch)
+  resume: true # <name>_weights.ckpt, the full trainer state a rerun resumes from, rewritten every epoch
+  keep_resume: false # false: delete it after a successful finish
+  lightning: false # true: also stable-pretraining's own checkpoints under <runs>/spt (last.ckpt and the epoch one), which hold the same state as the resume file
 
 loss:
   kind: latent # latent | pixel | grounded | latent_twin, see lewm_forward in train.py
