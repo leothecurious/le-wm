@@ -112,6 +112,20 @@ uv run train.py data=pusht
 
 Checkpoints are saved to `<runs>/checkpoints/<subdir>`, and `metrics.csv` to `<runs>/spt/<subdir>/runs`.
 
+A run keeps little by default. `weights_epoch_N.pt` (plain state dicts, which `measure.py` and `eval.py` load) is saved
+for epoch 5 and the last epoch. One resume file, `<name>_weights.ckpt` (the full trainer state a rerun resumes from), is
+rewritten every epoch and deleted after a successful finish. Measuring keeps its latents in memory. All of it is opt-out:
+
+```bash
+bash scripts/run.sh <name> checkpoint.epochs=null checkpoint.keep_resume=true checkpoint.lightning=true  # keep every epoch's weights, the resume file, and stable-pretraining's snapshots
+uv run measure.py --config-name=dot policy=<name>/weights_epoch_10.pt cache_latents=true        # save the latents next to the results
+```
+
+`checkpoint.epochs` lists the epochs whose weights are saved (the last always is; `null` saves every epoch).
+`checkpoint.lightning=true` also writes stable-pretraining's own full snapshots under `<runs>/spt/<subdir>`
+(`last.ckpt` and the end-of-epoch one). `checkpoint.resume=false` never writes the resume file, and a killed run then
+restarts from scratch.
+
 ### Weights & Biases
 
 Off by default. `wandb.enabled=true` logs to W&B in addition to the local files, which stay the durable record
@@ -131,6 +145,11 @@ one run, and fails if that run does not exist. Measuring one run twice (a differ
 one set of keys overwrites the first; set `wandb.label=<name>` to keep both. The key namespaces are listed in the
 docstring of `tracking.py`.
 
+`wandb.upload_weights=true` also uploads the final weights file as a `model` artifact named `<run>-weights`, with its
+sha256 in the metadata and `checkpoint/artifact` in the summary. After an online upload is confirmed, the run's
+artifact staging and cache under `<runs>/checkpoints/<subdir>/wandb_artifacts` are deleted. The artifact counts against
+the W&B storage quota, and W&B itself also keeps its run files under `<runs>/checkpoints/<subdir>/wandb`.
+
 For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
 
 ## Planning
@@ -147,7 +166,7 @@ uv run eval.py --config-name=pusht.yaml policy=pusht/lewm_object.ckpt
 
 ## Metrics
 
-`measure.py` computes state and reverse probes and effective rank for one checkpoint. Configs live under `config/measure/`; `policy` resolves as in `eval.py`. Latents are saved next to the results, and `latents_path=<file>` reruns the metrics without re-encoding.
+`measure.py` computes state and reverse probes and effective rank for one checkpoint. Configs live under `config/measure/`; `policy` resolves as in `eval.py`. `cache_latents=true` saves the latents next to the results, and `latents_path=<file>` reruns the metrics without re-encoding.
 
 ```bash
 uv run measure.py --config-name=pusht policy=pusht_seed1/weights_epoch_10.pt
