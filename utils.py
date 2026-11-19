@@ -125,7 +125,7 @@ class SaveCkptCallback(Callback):
         super().__init__()
         self.run_name = run_name
         self.cfg = cfg
-        self.epochs = None if epochs is None else set(epochs)
+        self.epochs = epochs
         self.epoch_interval = epoch_interval
         self.step_interval = step_interval
         self.cache_dir = cache_dir
