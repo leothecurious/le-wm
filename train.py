@@ -31,6 +31,7 @@ def lewm_forward(self, batch, stage, cfg):
     context embedding one step forward.
     """
     kind, ctx_len, n_preds = cfg.loss.kind, cfg.history_size, cfg.num_preds
+    prefix = {"fit": "train", "validate": "val"}.get(stage, stage)
     if kind not in ("latent", "pixel", "grounded", "latent_twin"):
         raise ValueError(kind)
 
@@ -72,10 +73,10 @@ def lewm_forward(self, batch, stage, cfg):
     elif terms and self.global_step % cfg.loss.grad_share_every == 0:
         # Share of the gradient norm at the embeddings held by each prediction term; SIGReg's is left out.
         for k, v in grad_shares(terms, emb).items():
-            self.log(f"{stage}/{k}_grad_share", v, on_step=False, on_epoch=True, sync_dist=True)
-            self.log(f"{stage}/{k}_grad_share_min", v, on_step=False, on_epoch=True, reduce_fx="min", sync_dist=True)
+            self.log(f"{prefix}/{k}_grad_share", v, on_step=False, on_epoch=True, sync_dist=True)
+            self.log(f"{prefix}/{k}_grad_share_min", v, on_step=False, on_epoch=True, reduce_fx="min", sync_dist=True)
 
-    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
+    losses_dict = {f"{prefix}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
     return output
 
