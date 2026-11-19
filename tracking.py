@@ -146,10 +146,6 @@ class RunLogger(Logger):
     def version(self):
         return self.run.id
 
-    @property
-    def experiment(self):
-        return self.run
-
     def log_hyperparams(self, params, *args, **kwargs):
         pass
 
@@ -169,10 +165,10 @@ class CheckpointHashCallback(Callback):
     run keeps them for ``wandb sync``.
     """
 
-    def __init__(self, run, run_dir, upload=False):
+    def __init__(self, run, run_dir, upload):
         super().__init__()
         self.run = run
-        self.run_dir = Path(run_dir)
+        self.run_dir = run_dir
         self.upload = upload
 
     def on_train_end(self, trainer, pl_module):
@@ -183,13 +179,11 @@ class CheckpointHashCallback(Callback):
         digest = sha256(last)
         self.run.summary["checkpoint/file"] = last.name
         self.run.summary["checkpoint/sha256"] = digest
-        if self.upload:
-            self._upload(last, digest)
-
-    def _upload(self, path, digest):
-        artifact = wandb.Artifact(f"{self.run.id}-weights", type="model", metadata={"file": path.name, "sha256": digest})
-        artifact.add_file(str(path), name=path.name)
-        logged = self.run.log_artifact(artifact, aliases=["latest"])
+        if not self.upload:
+            return
+        artifact = wandb.Artifact(f"{self.run.id}-weights", type="model", metadata={"file": last.name, "sha256": digest})
+        artifact.add_file(str(last))
+        logged = self.run.log_artifact(artifact)
         self.run.summary["checkpoint/artifact"] = artifact.name
         if self.run.settings.mode == "online":
             logged.wait()
